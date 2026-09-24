@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" href="data:," />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lattice Boltzmann wind tunnel</title>
+  <link rel="stylesheet" href="/src/app.css" />
+</head>
+<body>
+  <main id="stage">
+    <canvas id="view" aria-label="Flow field"></canvas>
+    <div id="nogpu" hidden></div>
+  </main>
+  <aside id="panel">
+    <h1>Wind tunnel</h1>
+    <p class="sub">D2Q9 TRT lattice Boltzmann on WebGPU</p>
+
+    <section>
+      <label>Tunnel
+        <select id="tunnel">
+          <option value="free">Free flight (slip walls)</option>
+          <option value="channel">Channel (no-slip, parabolic inlet)</option>
+        </select>
+      </label>
+      <label>Grid
+        <select id="grid">
+          <option value="512x256">512 × 256</option>
+          <option value="1024x512" selected>1024 × 512</option>
+          <option value="2048x1024">2048 × 1024</option>
+          <option value="4096x2048">4096 × 2048</option>
+        </select>
+      </label>
+      <label>Obstacle
+        <select id="obstacle">
+          <option value="cylinder">Cylinder</option>
+          <option value="naca">NACA 0012</option>
+          <option value="square">Square</option>
+          <option value="plate">Flat plate</option>
+          <option value="none">None (draw your own)</option>
+        </select>
+      </label>
+      <label><span>Size <output id="sizeOut"></output> cells</span>
+        <input id="size" type="range" min="8" max="400" step="1" />
+      </label>
+      <label><span>Angle <output id="angleOut"></output>°</span>
+        <input id="angle" type="range" min="-30" max="30" step="0.5" value="0" />
+      </label>
+    </section>
+
+    <section>
+      <label>Reynolds number
+        <input id="re" type="number" min="1" max="1000000" step="any" value="150" />
+      </label>
+      <label><span>Lattice speed u <output id="uOut"></output></span>
+        <input id="u" type="range" min="0.02" max="0.1" step="0.005" value="0.1" />
+      </label>
+      <label class="check"><input id="smag" type="checkbox" /> <span>Smagorinsky stabilizer, C<sub>s</sub> <output id="csOut"></output></span></label>
+      <input id="cs" type="range" min="0.1" max="0.17" step="0.005" value="0.14" />
+      <p id="tauNote" class="note"></p>
+      <p id="reNote" class="note warn" hidden></p>
+    </section>
+
+    <section>
+      <label>View
+        <select id="viewMode">
+          <option value="0">Vorticity (curl)</option>
+          <option value="1">Speed</option>
+          <option value="2">Density</option>
+          <option value="3">Schlieren</option>
+        </select>
+      </label>
+      <label><span>Contrast</span> <input id="contrast" type="range" min="0.2" max="5" step="0.1" value="1" /></label>
+      <label>Tracers
+        <select id="tracers">
+          <option value="0">Off</option>
+          <option value="1" selected>Wind particles</option>
+          <option value="2">Streaklines</option>
+        </select>
+      </label>
+    </section>
+
+    <section>
+      <div class="tools" role="radiogroup" aria-label="Pointer tool">
+        <label><input type="radio" name="tool" value="draw" checked /> Draw</label>
+        <label><input type="radio" name="tool" value="erase" /> Erase</label>
+        <label><input type="radio" name="tool" value="probe" /> Probe</label>
+      </div>
+      <label><span>Brush <output id="brushOut"></output> cells</span>
+        <input id="brush" type="range" min="1" max="40" step="1" value="6" /></label>
+      <div class="buttons">
+        <button id="pause">Pause</button>
+        <button id="resetFlow">Reset flow</button>
+        <button id="resetBody">Reset obstacle</button>
+      </div>
+      <label><span>Steps per frame <output id="spfOut"></output></span>
+        <select id="spfMode">
+          <option value="auto" selected>Auto (fit frame budget)</option>
+          <option value="1">1</option>
+          <option value="5">5</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </label>
+    </section>
+
+    <section>
+      <dl id="stats">
+        <dt>C<sub>D</sub> mean</dt><dd id="cd">–</dd>
+        <dt>C<sub>L</sub> mean</dt><dd id="cl">–</dd>
+        <dt>Strouhal</dt><dd id="st">–</dd>
+        <dt>Step</dt><dd id="step">0</dd>
+        <dt>Throughput</dt><dd id="mlups">–</dd>
+        <dt>Probe</dt><dd id="probe">click with Probe tool</dd>
+      </dl>
+      <div class="chart">
+        <canvas id="chart" aria-label="Drag and lift coefficient history"></canvas>
+        <div id="chartTip" class="tip" hidden></div>
+      </div>
+      <p class="note">Coefficients use the reference length L and <span id="uRefNote">the inlet speed</span>. <a href="/validate.html">Validation</a> · <a href="/bench.html">Benchmark</a></p>
+    </section>
+  </aside>
+  <script type="module" src="/src/app.ts"></script>
+</body>
+</html>

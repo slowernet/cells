@@ -1,0 +1,109 @@
+:root {
+  color-scheme: dark;
+  --surface-0: #111110;
+  --surface-1: #1a1a19;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #8f8e86;
+  --accent: #3987e5;
+  --warn: #c98500;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font: 13px/1.4 ui-sans-serif, system-ui, sans-serif;
+  overflow: hidden;
+}
+
+#stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: 12px;
+}
+
+#view {
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+  image-rendering: auto;
+}
+
+#nogpu {
+  max-width: 36em;
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+#panel {
+  background: var(--surface-1);
+  padding: 14px 16px;
+  overflow-y: auto;
+  border-left: 1px solid #2a2a28;
+}
+
+h1 { font-size: 17px; margin: 0; }
+.sub { margin: 2px 0 10px; color: var(--text-muted); }
+
+section {
+  border-top: 1px solid #2a2a28;
+  padding: 10px 0;
+  display: grid;
+  gap: 8px;
+}
+
+label { display: grid; gap: 3px; color: var(--text-secondary); }
+label.check { display: flex; align-items: center; gap: 6px; }
+output { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+select, input[type='number'], button {
+  font: inherit;
+  color: var(--text-primary);
+  background: #262624;
+  border: 1px solid #3a3a37;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+input[type='range'] { width: 100%; accent-color: var(--accent); }
+
+.tools { display: flex; gap: 12px; }
+.tools label { display: flex; gap: 4px; align-items: center; }
+.buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.note { margin: 0; color: var(--text-muted); font-size: 12px; }
+.note.warn { color: var(--warn); }
+.note a { color: var(--text-secondary); }
+
+#stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  margin: 0;
+}
+#stats dt { color: var(--text-secondary); }
+#stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+.chart { position: relative; }
+#chart { width: 100%; height: 190px; display: block; border-radius: 4px; }
+.tip {
+  position: absolute;
+  left: 6px;
+  bottom: 22px;
+  padding: 2px 6px;
+  background: rgba(17, 17, 16, 0.9);
+  border-radius: 3px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
