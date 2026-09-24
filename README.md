@@ -2,6 +2,8 @@
 
 A 2D wind tunnel in the browser: D2Q9 lattice Boltzmann with TRT collision, running as WebGPU compute shaders. It implements the recommendations in [docs/research/lattice-boltzmann-browser-wind-tunnel.md](docs/research/lattice-boltzmann-browser-wind-tunnel.md).
 
+![Speed field and wind particles behind an inclined flat plate, showing alternating shed vortices](docs/images/flat-plate-wake.jpg)
+
 **Live demo: https://slowernet.github.io/cells/**. It also serves the [validation suite](https://slowernet.github.io/cells/validate.html) and the [MLUPS benchmark](https://slowernet.github.io/cells/bench.html). Every push to `main` deploys the demo to GitHub Pages (`.github/workflows/pages.yml`).
 
 ```sh
