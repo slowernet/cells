@@ -80,11 +80,45 @@ const poiseuille: Case = async (device) => {
       den += e * e;
     }
     const err = Math.sqrt(num / den);
-    metrics.push(metric(`L2 error, tau=${tau}`, err, [0, 0], [0, 5e-3]));
+    // 2e-4 sits above the float32 floor (~5e-5) and below what a wrong magic parameter gives (Lambda = 1/4: 4.5e-4).
+    metrics.push(metric(`L2 error, tau=${tau}`, err, [0, 0], [0, 2e-4]));
     s.destroy();
   }
   notes.push('TRT with Lambda = 3/16 puts the halfway bounce-back wall exactly at y = -1/2 for every tau, so the parabola is reproduced to round-off.');
   return { name: 'Plane Poiseuille', metrics, steps, cells: 4 * H, notes };
+};
+
+const periodicSeam: Case = async (device) => {
+  // Shifting a body by exactly half a periodic domain changes nothing physically, so a body whose upstream face sits on the seam must feel the same force.
+  const W = 128, H = 64, D = 16, tau = 0.8;
+  const drag: number[] = [];
+  let steps = 0;
+  for (const cx of [W / 2 + D / 2 - 0.5, D / 2 - 0.5]) {
+    const s = await Solver.create(device, {
+      width: W, height: H, left: XMode.Periodic, right: XMode.Periodic,
+      bottom: YMode.NoSlip, top: YMode.NoSlip, tau, bodyForce: [2e-6, 0], forceEvery: 100,
+    });
+    const sdf = emptySdf(W, H);
+    addCircle(sdf, W, H, cx, H / 2 - 0.5, D / 2);
+    addCircle(sdf, W, H, cx + W, H / 2 - 0.5, D / 2);
+    s.setSdf(sdf);
+    s.initField();
+    const forces: ForceSample[] = [];
+    for (let k = 0; k < 20; k++) {
+      await s.run(1000, 1000);
+      forces.push(...(await s.readForces()));
+    }
+    steps += s.step;
+    drag.push(mean(forces.slice(-5).map((f) => f.fx)));
+    s.destroy();
+  }
+  return {
+    name: 'Periodic seam invariance',
+    metrics: [metric('drag at seam / drag in middle', drag[1] / drag[0], [1, 1], [0.999, 1.001])],
+    steps,
+    cells: W * H,
+    notes: [`mid-domain drag ${drag[0].toExponential(7)}, seam drag ${drag[1].toExponential(7)}`],
+  };
 };
 
 const taylorGreen: Case = async (device) => {
@@ -391,6 +425,7 @@ const naca: Case = async (device, log) => {
 
 export const CASES: Record<string, Case> = {
   poiseuille,
+  periodicSeam,
   taylorGreen,
   schaferTurek1,
   schaferTurek2,

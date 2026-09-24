@@ -50,13 +50,14 @@ fn main(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) li: u
   if (P.right == X_OPEN && x == P.W - 1u) { bits = FLAG_OUTLET; }
   var touchesBody = false;
   for (var i = 1u; i < 9u; i++) {
-    let sx = i32(x) - CX[i];
-    let sy = i32(y) - CY[i];
-    if (sx < 0 || sy < 0 || sx >= i32(P.W) || sy >= i32(P.H)) {
-      bits |= 1u << i;
-    } else if (solidAt(u32(sx), u32(sy))) {
+    let s = wrapPeriodic(vec2i(i32(x) - CX[i], i32(y) - CY[i]));
+    let inside = s.x >= 0 && s.y >= 0 && s.x < i32(P.W) && s.y < i32(P.H);
+    if (inside && solidAt(u32(s.x), u32(s.y))) {
       bits |= 1u << i;
       touchesBody = true;
+    } else if (!inside || s.x != i32(x) - CX[i] || s.y != i32(y) - CY[i]) {
+      // Off the grid or across a periodic seam: the slow path resolves it.
+      bits |= 1u << i;
     }
   }
   if (touchesBody) {

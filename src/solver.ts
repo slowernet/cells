@@ -58,6 +58,7 @@ export class Solver {
   private parity = 0;
   private forceSamplesRead = 0;
   private forceSteps: number[] = [];
+  private forceGeneration = 0;
 
   readonly params: GPUBuffer;
   readonly f: [GPUBuffer, GPUBuffer];
@@ -236,6 +237,7 @@ export class Solver {
     this.device.queue.writeBuffer(this.histState, 0, new Uint32Array(1));
     this.forceSamplesRead = 0;
     this.forceSteps = [];
+    this.forceGeneration++;
   }
 
   /** Stamps discs of radius r along the given points into the SDF, then rebuilds flags once. */
@@ -311,12 +313,14 @@ export class Solver {
 
   /** Force samples produced since the last call, oldest first. Older samples beyond the ring are dropped. */
   async readForces(): Promise<ForceSample[]> {
-    const pending = this.forceSteps.length;
-    if (pending === 0) return [];
+    if (this.forceSteps.length === 0) return [];
+    const generation = this.forceGeneration;
     const [hist, state] = await Promise.all([
       readBuffer(this.device, this.history, 0, HISTORY_LEN * 8),
       readBuffer(this.device, this.histState, 0, 4),
     ]);
+    // A reset while the copy was in flight makes these samples stale.
+    if (generation !== this.forceGeneration) return [];
     const written = new Uint32Array(state)[0];
     const h = new Float32Array(hist);
     const firstAvailable = Math.max(this.forceSamplesRead, written - HISTORY_LEN);

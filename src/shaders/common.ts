@@ -44,6 +44,18 @@ fn inletVelocity(y: u32) -> f32 {
   return 4.0 * P.uIn * s * (h - s) / (h * h);
 }
 
+// Maps a node index across periodic sides; indices past other sides are left out of range.
+fn wrapPeriodic(p: vec2i) -> vec2i {
+  var q = p;
+  let W = i32(P.W);
+  let H = i32(P.H);
+  if (q.x < 0 && P.left == X_PERIODIC) { q.x += W; }
+  if (q.x >= W && P.right == X_PERIODIC) { q.x -= W; }
+  if (q.y < 0 && P.bottom == Y_PERIODIC) { q.y += H; }
+  if (q.y >= H && P.top == Y_PERIODIC) { q.y -= H; }
+  return q;
+}
+
 fn cellIndex(wg: vec3u, li: u32) -> u32 {
   return (wg.y * P.groupsX + wg.x) * WG + li;
 }

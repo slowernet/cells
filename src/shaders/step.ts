@@ -126,10 +126,9 @@ fn pullSlow(i: u32, x: u32, y: u32, idx: u32, fl: u32, force: ptr<function, vec2
   if ((fl & (1u << i)) == 0u) {
     return src[i * N + u32(sy * W + sx)];
   }
-  if (sx < 0 && P.left == X_PERIODIC) { sx += W; }
-  if (sx >= W && P.right == X_PERIODIC) { sx -= W; }
-  if (sy < 0 && P.bottom == Y_PERIODIC) { sy += H; }
-  if (sy >= H && P.top == Y_PERIODIC) { sy -= H; }
+  let ws = wrapPeriodic(vec2i(sx, sy));
+  sx = ws.x;
+  sy = ws.y;
   let inX = sx >= 0 && sx < W;
   let inY = sy >= 0 && sy < H;
 
@@ -143,8 +142,9 @@ fn pullSlow(i: u32, x: u32, y: u32, idx: u32, fl: u32, force: ptr<function, vec2
     let q = clamp(dF / max(dF - dS, 1e-6), 1e-3, 1.0);
     var fi = fj;
     if (q < 0.5) {
-      let nx = i32(x) + CX[i];
-      let ny = i32(y) + CY[i];
+      let np = wrapPeriodic(vec2i(i32(x) + CX[i], i32(y) + CY[i]));
+      let nx = np.x;
+      let ny = np.y;
       if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
         let n = u32(ny * W + nx);
         if (!isSolid(n)) {

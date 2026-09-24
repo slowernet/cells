@@ -135,7 +135,10 @@ function resetFlow() {
   resetForces();
 }
 
+let rebuildToken = 0;
+
 async function rebuild() {
+  const token = ++rebuildToken;
   const s = settings();
   state.solver?.destroy();
   state.solver = null;
@@ -155,6 +158,11 @@ async function rebuild() {
     absorb: 0.02,
     forceEvery: FORCE_EVERY,
   });
+  // A later rebuild started while this one compiled; its settings win.
+  if (token !== rebuildToken) {
+    solver.destroy();
+    return;
+  }
   state.W = s.W;
   state.H = s.H;
   solver.setSdf(buildSdf(s.W, s.H));
