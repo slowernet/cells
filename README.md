@@ -32,3 +32,7 @@ Needs a browser with WebGPU: Chrome/Edge 113+, Safari 26, or Firefox on Windows 
 ## Validation
 
 `/validate.html` (or `npm run test:gpu`) runs the benchmark suite from the research doc: Poiseuille, Taylor-Green, Schäfer-Turek 2D-1 and 2D-2, the unconfined cylinder at Re 100, the Ghia cavity at Re 1000, and NACA0012 at Re 500. Each metric prints the published range and the acceptance range the solver has to meet.
+
+## Acknowledgement
+
+Claude Opus 5.5 (Anthropic) researched and implemented this project, working in Claude Code under the direction of [@slowernet](https://github.com/slowernet). The research doc, solver, validation suite, benchmark, demo and this README all came out of those sessions. The implementation session cost about $11.61 in API usage. Two subagent runs, a reference check and an adversarial code review, account for roughly 200,000 of its tokens. The research doc was written in an earlier session whose cost isn't included in that figure.
