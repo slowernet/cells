@@ -118,7 +118,11 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
     - wing: `addWing` with chord L, span 0.6·D, angle +angleDeg in radians.
     - none: an empty SDF, lRef = 1, area = 0, bounds = null.
     - `area = referenceArea(obstacle, L, D)`.
-    - `bounds` is the body's axis-aligned box grown by 2 cells and clipped to the domain. For rotated shapes, use the box of the rotated extents: for the cube, half-diagonal L/√2·√2 in x-y; for the wing, chord/2 in x-y around the mid-chord.
+    - `bounds` is the body's axis-aligned box grown by 2 cells and clipped to the domain. The unclipped half-extents around the centre are:
+      - sphere: L/2 on every axis;
+      - cube rotated by a about z: (L/2)·(|cos a| + |sin a|) in x and y, and L/2 in z;
+      - cylinder: L/2 in x and y, the full depth in z;
+      - wing: chord/2 in x and y, and 0.3·D in z.
   - `coefficientScale(uTarget, area): number` = `2 / (uTarget² · area)`, or 0 when area is 0.
   - `Solver3D.setSmagorinsky(cs: number)`: sets `cfg.smagorinsky` and rewrites the params.
 - **Context**: spec Inputs table; `src/geometry3d.ts`; `src/shaders/common3d.ts` `fitsLimits`/`PRESETS3`.
