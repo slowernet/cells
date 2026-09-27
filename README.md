@@ -20,6 +20,59 @@ tail -f test-results/progress.log   # follow a running GPU test or benchmark
 
 Needs a browser with WebGPU: Chrome/Edge 113+, Safari 26, or Firefox on Windows or Apple Silicon. The 3D tunnel stores distributions in FP16 when the device has the `shader-f16` feature, and falls back to FP32 otherwise.
 
+## GPU requirements
+
+Any GPU with WebGPU runs both tunnels. Memory bandwidth decides how fast they run, because lattice Boltzmann is bandwidth-bound: each step streams every cell's populations in and out. The 2D tunnel is light enough that bandwidth only changes how many steps fit in a frame. The 3D tunnel is the demanding one.
+
+**Browsers.** WebGPU is on by default in:
+- Chrome and Edge 113+ on Windows, macOS and ChromeOS;
+- Chrome 121+ on Android 12+;
+- Safari 26 on macOS and iPadOS;
+- Firefox on Windows and on Apple Silicon Macs.
+
+On Linux, Chrome enables it for Intel Gen12+ and for NVIDIA on Wayland; other setups, and Firefox on Linux, need flags ([implementation status](https://github.com/gpuweb/gpuweb/wiki/Implementation-Status)). The 3D tunnel uses FP16 storage when the browser exposes `shader-f16`, which about 94% of WebGPU devices do (99.9% on macOS, 71% on Linux; [web3dsurvey](https://web3dsurvey.com/webgpu/features/shader-f16)). Otherwise it falls back to FP32, which moves twice the bytes per step.
+
+**Memory per 3D grid:**
+
+| Grid | Cells | FP16 total | FP32 total | Largest buffer (FP32) |
+|---|---|---|---|---|
+| low 128×64×64 | 0.52M | 63 MB | 103 MB | 40 MB |
+| medium 192×96×96 | 1.77M | 212 MB | 347 MB | 134.5 MB |
+| high 256×128×128 | 4.19M | 503 MB | 822 MB | 319 MB |
+
+WebGPU's default limit for one storage buffer is 128 MiB, so medium FP32 and high need the larger limits most GPUs report. The page offers only the grids that fit the device.
+
+**Smooth 3D.** The target is 480 lattice steps per second at the page's defaults (medium grid), so that the flow crosses the tunnel in a few seconds. On an Apple M5 (153 GB/s), the page ran about 600 steps/s with FP16 and the benchmark about 1,330 MLUPS. Scaling that by bandwidth gives these thresholds for 480 steps/s:
+
+| Grid | FP16 | FP32 |
+|---|---|---|
+| low | ≈ 36 GB/s | ≈ 68 GB/s |
+| medium (default) | ≈ 120 GB/s | ≈ 230 GB/s |
+| high | ≈ 290 GB/s | ≈ 550 GB/s |
+
+The table below applies the same scaling to recent GPUs. Only the M5 row is measured. The others are estimates that assume every GPU turns bandwidth into lattice updates as efficiently as the M5; real results vary with the driver and architecture. For integrated GPUs, bandwidth depends on the memory the laptop maker fitted, so the table uses the fastest memory each chip supports.
+
+| GPU | Bandwidth | Est. steps/s, medium FP16 | Smooth at |
+|---|---|---|---|
+| Apple M1 | 68 GB/s | ≈ 270 | low |
+| Apple M2, M3 | 100 GB/s ([M2](https://www.apple.com/newsroom/2022/06/apple-unveils-m2-with-breakthrough-performance-and-capabilities/), [M3](https://support.apple.com/en-us/118551)) | ≈ 390 | low |
+| Apple M4 | 120 GB/s ([Apple](https://www.apple.com/newsroom/2024/10/apple-introduces-m4-pro-and-m4-max/)) | ≈ 470 | medium, just |
+| **Apple M5** | 153 GB/s ([Apple](https://www.apple.com/newsroom/2025/10/apple-unleashes-m5-the-next-big-leap-in-ai-performance-for-apple-silicon/)) | **≈ 600, measured** | medium |
+| Apple M4 Pro, M5 Pro | 273, 307 GB/s ([M5 Pro/Max](https://www.apple.com/newsroom/2026/03/apple-debuts-m5-pro-and-m5-max-to-supercharge-the-most-demanding-pro-workflows/)) | ≈ 1,070, 1,200 | medium; high on M5 Pro |
+| Apple M4 Max, M5 Max | up to 546, 614 GB/s | ≈ 2,100+ | high, including FP32 on M5 Max |
+| Intel Iris Xe (Tiger/Alder Lake) | 51–83 GB/s ([ARK](https://www.intel.com/content/www/us/en/products/sku/226254/intel-core-i71260p-processor-18m-cache-up-to-4-70-ghz/specifications.html)) | ≈ 200–330 | low |
+| Intel Arc iGPU (Meteor Lake) | 90–120 GB/s ([ARK](https://www.intel.com/content/www/us/en/products/sku/236847/intel-core-ultra-7-processor-155h-24m-cache-up-to-4-80-ghz/specifications.html)) | ≈ 350–470 | low; medium with LPDDR5X |
+| Intel Arc 140V (Lunar Lake) | 137 GB/s ([ARK](https://www.intel.com/content/www/us/en/products/sku/240957/intel-core-ultra-7-processor-258v-12m-cache-up-to-4-80-ghz/specifications.html)) | ≈ 540 | medium |
+| AMD Radeon 780M, 890M | 90–128 GB/s ([780M](https://www.amd.com/en/products/processors/laptop/ryzen/7000-series/amd-ryzen-7-7840u.html), [890M](https://www.amd.com/en/products/processors/laptop/ryzen/ai-300-series/amd-ryzen-ai-9-hx-370.html)) | ≈ 350–500 | low; medium with LPDDR5X |
+| AMD Radeon 8060S (Strix Halo) | 256 GB/s ([AMD](https://www.amd.com/en/products/processors/desktops/ryzen/ryzen-ai-halo/ryzen-ai-max-plus-395.html)) | ≈ 1,000 | medium, FP32 too |
+| NVIDIA RTX 3050 / 4050 laptop | 192 GB/s ([TechPowerUp](https://www.techpowerup.com/gpu-specs/geforce-rtx-4050-mobile.c3953)) | ≈ 750 | medium |
+| NVIDIA RTX 4060 (laptop, desktop), AMD RX 7600 | 256–288 GB/s ([TechPowerUp](https://www.techpowerup.com/gpu-specs/geforce-rtx-4060.c4107)) | ≈ 1,000–1,130 | medium, FP32 too |
+| NVIDIA RTX 5060, 4070; Intel Arc B580, A750 | 448–512 GB/s ([TechPowerUp](https://www.techpowerup.com/gpu-specs/geforce-rtx-5060.c4219)) | ≈ 1,750–2,000 | high |
+| NVIDIA RTX 5070 | 672 GB/s ([TechPowerUp](https://www.techpowerup.com/gpu-specs/geforce-rtx-5070.c4218)) | ≈ 2,600 | high, FP32 too |
+| Snapdragon 8 Gen 3, 8 Elite Gen 5 phones | 77–85 GB/s ([Qualcomm](https://docs.qualcomm.com/bundle/publicresource/87-71408-1_REV_C_Snapdragon_8_gen_3_Mobile_Platform_Product_Brief.pdf)) | ≈ 300–330 | low |
+
+The discrete and integrated x86 figures are computed from each part's memory speed and bus width. On machines below the medium threshold, the page still runs at medium, just with the flow developing more slowly; the low grid restores the pace.
+
 ## What it does: 2D
 
 - **Solver** (`src/shaders/step.ts`): one fused pull-stream, boundary and collide kernel per time step. All steps for a frame go into one compute pass. Distributions are stored structure-of-arrays as `f_i − w_i`, which keeps float32 precision for small deviations from rest.
