@@ -160,7 +160,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
     - `encode(enc, view: View3)`: sets `view.count`, writes the uniform, then records one render pass that clears the colour to (0.07, 0.07, 0.08) and depth to 1 and draws the outline, obstacle, slice and tracers in that order (tracers arrive in Task 4). With `view.tracers` false, it skips both the advect compute pass and the tracer draw.
     - `requestPixelCount(): Promise<number>`: on the next `encode`, copies the canvas texture to a buffer and resolves with the number of pixels that differ from the clear colour by more than 8/255 in any channel.
 - **Behavior**:
-  - **Outline**: 12 box edges as a `line-list` from vertex_index, grey, depth-tested.
+  - **Outline**: the 12 edges of the domain box [−0.5, W − 0.5] × [−0.5, H − 0.5] × [−0.5, D − 0.5], computed from `P.W`, `P.H` and `P.D` (so the module uses binding 0), as a `line-list` from vertex_index, grey, depth-tested. `V.boxMin`/`V.boxMax` are only the obstacle's march bounds. For obstacle `none` (bounds null), the app writes a zero box with `hasBody` false.
   - **Obstacle**: a fullscreen triangle.
     1. The fragment builds a ray from `invViewProj` (near and far NDC points).
     2. It intersects the ray with [boxMin, boxMax] and discards on a miss or when `hasBody` is false.
@@ -176,6 +176,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
   - `src/view3d.test.ts`, `packView3 layout`: pack a View3 with distinct values and read each field back at its `VIEW3_OFFSETS` entry; the buffer length is `VIEW3_BYTES`. Moving a field fails it.
   - `src/shaders/render3d.test.ts`:
     - `vertex stages read storage read-only`: no module declares `var<storage, read_write>`.
+    - `outline uses the domain size`: `outlineShader()` reads `P.W`, `P.H` and `P.D`, and does not read `boxMin` or `boxMax`.
     - `obstacle writes depth and clips to the box`: `obstacleShader()` contains `@builtin(frag_depth)`, `boxMin` and `boxMax`, and its step clamp is at most `1.0`.
     - `struct matches packing`: parse `VIEW3_WGSL`'s fields and types, compute each offset with WGSL's uniform layout rules (f32/u32 size and alignment 4, vec3f size 12 and alignment 16, mat4x4f size 64 and alignment 16, struct size rounded up to 16), and compare the offsets with `VIEW3_OFFSETS` and the size with `VIEW3_BYTES`. Drift in either fails it.
 - **Command**: `npm test -- view3d render3d`, then the shader compile check from Conventions for the outline, obstacle and slice modules.
