@@ -5,14 +5,17 @@ Browser wind tunnel: a D2Q9 TRT lattice Boltzmann solver in WebGPU compute shade
 ## Commands
 
 ```sh
-npm run dev        # dev server; pages: / (tunnel), /validate.html, /bench.html
+npm run dev        # dev server; pages: / (2D tunnel), /3d.html (3D tunnel), /validate.html, /bench.html
 npm run typecheck  # tsc, must be clean
 npm test           # vitest unit tests (src/**/*.test.ts), no GPU needed
 npm run test:gpu   # Playwright + headless Chrome WebGPU: physics validation suite
-CASES=poiseuille,taylorGreen npm run test:gpu   # run a subset
+CASES=poiseuille,taylorGreen npm run test:gpu   # run a subset of the validation cases
+THROUGHPUT=1 npx playwright test tests/tunnel3d.spec.ts   # 3D page smoke + steps/s check (GPU idle)
 npm run bench      # MLUPS benchmark sweep
 tail -f test-results/progress.log   # live progress of a running GPU test or benchmark
 ```
+
+`npm run test:gpu` runs every spec in `tests/`: the validation cases (which `CASES` filters), the 2D benchmark and the 3D page smoke test. The 3D page's throughput check (≥ 480 steps/s at defaults) runs only with `THROUGHPUT=1` and needs the GPU to itself.
 
 GPU tests build to `dist-test/` and serve it on port 5179 with `vite preview`. They use a static build because the dev server's hot reload restarts the page when a source file changes, which aborts long runs. Don't point Playwright at the dev server.
 
@@ -33,6 +36,19 @@ Long cases log a timestamped line after each convergence check (`check k/max`, a
 - `src/geometry.ts`: SDF builders.
 - `src/units.ts`: Re → τ conversion.
 - `src/analysis.ts`: Strouhal and stream-function helpers.
+- 3D (D3Q19, `3d.html`):
+  - `src/lattice3d.ts`: D3Q19 constants and flag bits.
+  - `src/shaders/common3d.ts`: the `Params3` struct, the FP16/FP32 storage codec, shared WGSL and `fitsLimits`.
+  - `src/shaders/step3d.ts`: the step kernel generator.
+  - `src/shaders/aux3d.ts`: the flag/refill, init, macro and force-reduction kernels.
+  - `src/solver3d.ts`: `Solver3D`.
+  - `src/geometry3d.ts`: 3D SDF builders and reference areas.
+  - `src/cases3d.ts`: the `sphereFp16` validation case.
+  - `src/app3d.ts`: the 3D page.
+  - `src/render3d.ts` + `src/shaders/render3d.ts`: the outline, sphere-traced obstacle, slice and tracers.
+  - `src/camera3d.ts`: the orbit camera.
+  - `src/view3d.ts`: the View3 uniform and tracer helpers.
+  - `src/tunnel3d.ts`: page logic, including presets, obstacle bodies and the step tuner.
 
 ## Solver conventions
 
