@@ -2,11 +2,16 @@ import { initGpu, readBuffer } from './gpu';
 import { Solver, SolverConfig } from './solver';
 import { XMode, YMode } from './lattice';
 import { emptySdf, addCircle } from './geometry';
+import { Solver3D, PRESETS3, type Precision } from './solver3d';
+import { emptySdf3, addSphere } from './geometry3d';
+import { bytesPerPopulation } from './shaders/common3d';
 
 export interface BenchRow {
   scenario: string;
   width: number;
   height: number;
+  /** Grid depth for D3Q19 rows. */
+  depth?: number;
   workgroup: number;
   forceEvery: number;
   steps: number;
@@ -18,6 +23,12 @@ export interface BenchRow {
 
 /** Bytes moved per cell update: nine loads and nine stores of f32 plus the flag word. */
 const BYTES_PER_CELL = 9 * 4 * 2 + 4;
+
+/** D3Q19: nineteen loads and nineteen stores of b bytes plus the flag word. */
+const bytesPerCell3D = (p: Precision) => 19 * bytesPerPopulation(p) * 2 + 4;
+
+/** Spec throughput floors on the reference M5, for the empty medium grid at the default workgroup. */
+const FLOOR_3D: Record<Precision, number> = { fp16: 1200, fp32: 600 };
 
 type Encode = (pass: GPUComputePassEncoder, steps: number) => void;
 
@@ -84,7 +95,7 @@ ${Array.from({ length: 9 }, (_, i) => `  dst[${i}u * N + idx] = src[${i}u * N + 
 }
 
 export async function runBenchmark(log: (s: string) => void = () => {}): Promise<{ adapter: string; rows: BenchRow[] }> {
-  const { device, adapter, timestamps } = await initGpu();
+  const { device, adapter, timestamps, f16 } = await initGpu({ f16: true });
   const info = adapter.info;
   const adapterName = `${info.vendor} ${info.architecture} ${info.description}`.trim();
   log(`adapter: ${adapterName}; timer: ${timestamps ? 'GPU timestamps' : 'wall clock'}`);
@@ -123,7 +134,52 @@ export async function runBenchmark(log: (s: string) => void = () => {}): Promise
           s.destroy();
         }
   }
+  rows.push(...(await bench3D(device, timestamps, f16, log)));
   return { adapter: adapterName, rows };
+}
+
+async function bench3D(device: GPUDevice, timestamps: boolean, f16: boolean, log: (s: string) => void): Promise<BenchRow[]> {
+  const [W, H, D] = PRESETS3.medium;
+  const N = W * H * D;
+  const steps = Math.max(100, Math.round(4e8 / N));
+  const rows: BenchRow[] = [];
+  const precisions: Precision[] = f16 ? ['fp32', 'fp16'] : ['fp32'];
+  precisionLoop: for (const precision of precisions)
+    for (const body of [false, true])
+      for (const wg of [64, 128, 256]) {
+        const forceEvery = body ? 4 : 0;
+        let s: Solver3D;
+        try {
+          s = await Solver3D.create(device, { width: W, height: H, depth: D, precision, tau: 0.56, uIn: 0.1, spongeFraction: 0.15, absorb: 0.02, workgroupSize: wg, forceEvery });
+        } catch (e) {
+          const msg = (e as Error).message;
+          if (!msg.startsWith('Solver3D allocation failed')) throw e;
+          log(`d3q19 ${precision} skipped: ${msg}`);
+          continue precisionLoop;
+        }
+        if (body) {
+          const sdf = emptySdf3(W, H, D);
+          addSphere(sdf, W, H, D, W / 4, H / 2, D / 2, 8);
+          s.setSdf(sdf);
+        }
+        s.initField();
+        const encode: Encode = (pass, n) => s.encodeSteps(pass, n);
+        await measure(device, encode, 50, timestamps);
+        const { ms, timer } = await measure(device, encode, steps, timestamps);
+        const mlups = (N * steps) / (ms * 1e3);
+        const scenario = `d3q19 ${body ? 'sphere' : 'empty'} ${precision}`;
+        const row: BenchRow = { scenario, width: W, height: H, depth: D, workgroup: wg, forceEvery, steps, ms, mlups, gbps: (mlups * 1e6 * bytesPerCell3D(precision)) / 1e9, timer };
+        rows.push(row);
+        log(`${scenario.padEnd(18)} ${`${W}x${H}x${D}`.padEnd(12)} wg ${String(wg).padEnd(4)} force ${forceEvery ? 'every 4   ' : 'off       '} ${mlups.toFixed(0).padStart(6)} MLUPS  ${row.gbps.toFixed(0).padStart(4)} GB/s  (${steps} steps, ${ms.toFixed(1)} ms)`);
+        s.destroy();
+      }
+  for (const precision of precisions) {
+    const r = rows.find((x) => x.scenario === `d3q19 empty ${precision}` && x.workgroup === 128);
+    if (!r) continue;
+    log(`d3q19 floor ${precision} (empty, wg 128): ${r.mlups.toFixed(0)} vs ${FLOOR_3D[precision]} MLUPS: ${r.mlups >= FLOOR_3D[precision] ? 'met' : 'missed'}`);
+  }
+  if (!f16) log('d3q19 fp16 rows skipped: shader-f16 not available on this device');
+  return rows;
 }
 
 const out = document.getElementById('out')!;
