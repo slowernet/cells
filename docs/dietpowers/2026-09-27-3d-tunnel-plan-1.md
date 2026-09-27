@@ -211,7 +211,7 @@ Commits: approved
   - `equilibria are shifted`: every `feq` call site goes through the single shifted-form function, and the text contains no `- WT[` subtraction applied to an equilibrium. Computing f_eq − w by subtraction fails it.
 - **Command**: `npm test -- step3d`. The GPU correctness check is `sphereFp16` in Task 8.
 
-### - [ ] Task 5: The auxiliary kernels
+### - [x] Task 5: The auxiliary kernels
 
 - **Files**: create `src/shaders/aux3d.ts` and `src/shaders/aux3d.test.ts`.
 - **Interfaces produced**: all four generators take a `Precision`, bind `P: Params3` at binding 0, and use entry point `main` and `override WG`.

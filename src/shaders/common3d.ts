@@ -30,6 +30,15 @@ const FLAG_OUTLET: u32 = ${FLAG_OUTLET}u;
 fn cellIndex(wg: vec3u, li: u32) -> u32 {
   return (wg.y * P.groupsX + wg.x) * WG + li;
 }
+
+fn at(x: i32, y: i32, z: i32) -> u32 { return u32(x + i32(P.W) * (y + i32(P.H) * z)); }
+fn cvec(i: u32) -> vec3f { return vec3f(f32(CX[i]), f32(CY[i]), f32(CZ[i])); }
+
+// Equilibrium minus its rest weight, matching the shifted storage of the distribution buffers.
+fn feq(i: u32, rho: f32, ux: f32, uy: f32, uz: f32) -> f32 {
+  let cu = 3.0 * (f32(CX[i]) * ux + f32(CY[i]) * uy + f32(CZ[i]) * uz);
+  return WT[i] * (rho - 1.0 + rho * (cu + 0.5 * cu * cu - 1.5 * (ux * ux + uy * uy + uz * uz)));
+}
 `;
 
 /** Module-level directive the precision needs; must come first in the module. */
