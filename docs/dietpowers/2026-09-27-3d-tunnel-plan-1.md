@@ -244,7 +244,7 @@ Commits: approved
   - `flags binds at most 8 storage buffers`: 7 storage buffers plus the uniform.
 - **Command**: `npm test -- aux3d`. The GPU behavior is checked by `sphereFp16` in Task 8.
 
-### - [ ] Task 6: Solver3D and the f16 device option
+### - [x] Task 6: Solver3D and the f16 device option
 
 - **Files**: create `src/solver3d.ts` and `src/solver3d.test.ts`; modify `src/gpu.ts`.
 - **Interfaces produced**:
