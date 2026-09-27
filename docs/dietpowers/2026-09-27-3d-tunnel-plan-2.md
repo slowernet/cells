@@ -303,7 +303,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
   - `no backdrop-filter over the canvas`: `src/app.css`, read with `node:fs`, contains no `backdrop-filter`.
 - **Command**: `npm test -- icons`.
 
-### - [ ] Task 8: Both pages on the overlay layout
+### - [x] Task 8: Both pages on the overlay layout
 
 - **Files**: modify `index.html`, `3d.html`, `src/app.ts` and `src/app3d.ts`; create `src/menu.ts` and `tests/menu.spec.ts`.
 - **Interfaces produced**:
@@ -323,3 +323,8 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
     5. Assert the canvas's pixel size is unchanged.
   - `controls still work`: open the menu, change `#obstacle`, and assert the page's readouts still update, meaning the step count increases.
 - **Command**: `npx playwright test tests/menu.spec.ts tests/tunnel3d.spec.ts`, then a visual check with `.dietpowers/page-check.mjs` on both pages at both viewports.
+- Departure: `ForceChart` gains `invalidate()`, and both pages draw the chart only while it is visible (`isShown` in `src/menu.ts`). The chart sizes itself from `clientWidth`, which is 0 inside a closed panel.
+- Departure: the menu test waits for the 180 ms slide-in before scrolling. A gesture sent mid-slide landed on the canvas behind the panel, and `elementFromPoint` confirmed that. The phone scroll uses CDP `Input.synthesizeScrollGesture` at fixed viewport coordinates.
+- Departure: the 3D pause test opens the menu before changing `#obstacle`, because that control now sits in the closed panel.
+- Departure: the panel is opaque (`--surface-1`), not 94% translucent. The screenshots showed the readout box and toolbar showing through, and an opaque panel also skips blending over the canvas.
+- Checked: screenshots of both pages at 1400×800 and 390×844 (phone, 3× scale), with the menu open and closed, from `.dietpowers/layout-shots.mjs`. There were no console warnings or errors. There is one verbose-level Chrome message per load about rendering in a `content-visibility` subtree.

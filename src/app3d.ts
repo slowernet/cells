@@ -3,6 +3,8 @@ import { Solver3D, PRESETS3, type Precision } from './solver3d';
 import { deriveTau, maxReynolds } from './units';
 import { mean } from './analysis';
 import { ForceChart } from './chart';
+import { initMenu, isShown } from './menu';
+import { icon } from './icons';
 import { OrbitCamera, invert } from './camera3d';
 import { Renderer3D } from './render3d';
 import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, nextStepsPerFrame, type PresetName } from './tunnel3d';
@@ -175,19 +177,18 @@ async function rebuild(callerNote = '') {
   state.rate = { t: performance.now(), step: 0, value: 0 };
 }
 
-function layout() {
-  const stage = $('stage');
-  const cssW = Math.max(1, stage.clientWidth - 24);
-  const cssH = Math.max(1, stage.clientHeight - 24);
-  canvas.style.width = `${cssW}px`;
-  canvas.style.height = `${cssH}px`;
-  const pw = Math.round(cssW * devicePixelRatio);
-  const ph = Math.round(cssH * devicePixelRatio);
-  if (canvas.width !== pw || canvas.height !== ph) {
-    canvas.width = pw;
-    canvas.height = ph;
-    renderer.resize(pw, ph);
-  }
+/** Sizes the drawing buffer to the canvas's exact device pixels; the menu overlay never changes this size. */
+function watchCanvasSize(onResize: (w: number, h: number) => void) {
+  new ResizeObserver(([e]) => {
+    const dp = e.devicePixelContentBoxSize?.[0];
+    const w = dp ? dp.inlineSize : Math.round(e.contentBoxSize[0].inlineSize * devicePixelRatio);
+    const h = dp ? dp.blockSize : Math.round(e.contentBoxSize[0].blockSize * devicePixelRatio);
+    if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+      canvas.width = w;
+      canvas.height = h;
+      onResize(w, h);
+    }
+  }).observe(canvas);
 }
 
 // Orbit on drag, zoom on wheel.
@@ -228,10 +229,12 @@ for (const id of ['size', 'angle']) input(id).addEventListener('input', resetBod
 for (const id of ['re', 'smag', 'cs']) input(id).addEventListener('input', applyPhysics);
 $('pause').addEventListener('click', () => {
   state.paused = !state.paused;
-  $('pause').textContent = state.paused ? 'Run' : 'Pause';
+  const label = state.paused ? 'Run' : 'Pause';
+  $('pause').innerHTML = icon(state.paused ? 'play' : 'pause');
+  $('pause').setAttribute('aria-label', label);
+  $('pause').title = label;
 });
 $('resetFlow').addEventListener('click', resetFlow);
-addEventListener('resize', layout);
 
 // GPU timing: the compute pass is bracketed by timestamps, read back without stalling the frame loop.
 const querySet = gpu.timestamps ? device.createQuerySet({ type: 'timestamp', count: 2 }) : null;
@@ -349,7 +352,7 @@ function frame(now: number) {
       $('sps').textContent = `${r.value.toFixed(0)} steps/s`;
     }
   }
-  chart.draw();
+  if (isShown(chartCanvas)) chart.draw();
 }
 
 refreshPresets(select('precision').value as Precision);
@@ -379,6 +382,8 @@ const hook = {
 };
 (window as unknown as { tunnel3d: typeof hook }).tunnel3d = hook;
 
-layout();
+const chartCanvas = $('chart');
+initMenu(() => chart.invalidate());
+await new Promise<void>((resolve) => watchCanvasSize((w, h) => (renderer.resize(w, h), resolve())));
 await rebuild(f16Note);
 requestAnimationFrame(frame);

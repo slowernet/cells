@@ -51,6 +51,11 @@ export class ForceChart {
     this.dirty = true;
   }
 
+  /** Forces a redraw, e.g. after the chart becomes visible again. */
+  invalidate() {
+    this.dirty = true;
+  }
+
   get data() {
     return { steps: this.steps, cd: this.cd, cl: this.cl };
   }

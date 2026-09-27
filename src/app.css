@@ -2,7 +2,6 @@
   color-scheme: dark;
   --surface-0: #111110;
   --surface-1: #1a1a19;
-  --overlay: rgba(26, 26, 25, 0.94);
   --overlay-soft: rgba(17, 17, 16, 0.78);
   --border: #2a2a28;
   --text-primary: #ffffff;
@@ -137,7 +136,8 @@ body {
   width: var(--panel-w);
   height: 100dvh;
   padding: calc(64px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
-  background: var(--overlay);
+  /* Opaque: nothing behind it needs blending, and the overlays underneath can't show through. */
+  background: var(--surface-1);
   border-right: 1px solid var(--border);
   overflow-y: auto;
   overscroll-behavior: contain;

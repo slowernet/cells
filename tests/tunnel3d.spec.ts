@@ -30,6 +30,7 @@ test('pausing keeps steps per frame and none shows no Re warning', async ({ page
   await page.waitForTimeout(3000);
   expect(await spf()).toBe(before);
   await page.click('#pause');
+  await page.click('.menu-button');
   await page.selectOption('#obstacle', 'none');
   await expect(page.locator('#reNote')).toBeHidden();
 });

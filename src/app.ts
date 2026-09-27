@@ -6,6 +6,8 @@ import { deriveTau, maxReynolds } from './units';
 import { periodFromCrossings, mean } from './analysis';
 import { Renderer, ViewMode, TracerMode } from './render';
 import { ForceChart } from './chart';
+import { initMenu, isShown } from './menu';
+import { icon } from './icons';
 
 type Obstacle = 'cylinder' | 'naca' | 'square' | 'plate' | 'none';
 
@@ -173,22 +175,26 @@ async function rebuild() {
   layout();
 }
 
+/** Letterboxes the canvas to the grid's aspect ratio inside the viewport; watchCanvasSize follows with the pixel size. */
 function layout() {
   const stage = $('stage');
-  const availW = stage.clientWidth - 24;
-  const availH = stage.clientHeight - 24;
-  const scale = Math.min(availW / state.W, availH / state.H);
-  const cssW = Math.floor(state.W * scale);
-  const cssH = Math.floor(state.H * scale);
-  canvas.style.width = `${cssW}px`;
-  canvas.style.height = `${cssH}px`;
-  const pw = Math.round(cssW * devicePixelRatio);
-  const ph = Math.round(cssH * devicePixelRatio);
-  if (canvas.width !== pw || canvas.height !== ph) {
-    canvas.width = pw;
-    canvas.height = ph;
-    renderer.resize(pw, ph);
-  }
+  const scale = Math.min(stage.clientWidth / state.W, stage.clientHeight / state.H);
+  canvas.style.width = `${Math.floor(state.W * scale)}px`;
+  canvas.style.height = `${Math.floor(state.H * scale)}px`;
+}
+
+/** Sizes the drawing buffer to the canvas's exact device pixels; the menu overlay never changes this size. */
+function watchCanvasSize(onResize: (w: number, h: number) => void) {
+  new ResizeObserver(([e]) => {
+    const dp = e.devicePixelContentBoxSize?.[0];
+    const w = dp ? dp.inlineSize : Math.round(e.contentBoxSize[0].inlineSize * devicePixelRatio);
+    const h = dp ? dp.blockSize : Math.round(e.contentBoxSize[0].blockSize * devicePixelRatio);
+    if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+      canvas.width = w;
+      canvas.height = h;
+      onResize(w, h);
+    }
+  }).observe(canvas);
 }
 
 function toGrid(e: PointerEvent): [number, number] {
@@ -265,12 +271,18 @@ function resetBody() {
 
 $('pause').addEventListener('click', () => {
   state.paused = !state.paused;
-  $('pause').textContent = state.paused ? 'Run' : 'Pause';
+  const label = state.paused ? 'Run' : 'Pause';
+  $('pause').innerHTML = icon(state.paused ? 'play' : 'pause');
+  $('pause').setAttribute('aria-label', label);
+  $('pause').title = label;
 });
 $('resetFlow').addEventListener('click', resetFlow);
 $('resetBody').addEventListener('click', resetBody);
 input('brush').addEventListener('input', () => ($('brushOut').textContent = input('brush').value));
 addEventListener('resize', layout);
+const chartCanvas = $('chart');
+initMenu(() => chart.invalidate());
+watchCanvasSize((w, h) => renderer.resize(w, h));
 addEventListener('keydown', (e) => {
   if (e.code === 'Space' && e.target === document.body) {
     e.preventDefault();
@@ -412,7 +424,7 @@ function frame(now: number) {
     if (state.probe) $('probe').textContent = state.probeValue;
   }
   $('spfOut').textContent = String(n);
-  chart.draw();
+  if (isShown(chartCanvas)) chart.draw();
 }
 
 input('size').value = String(Math.round(DEFAULT_SIZE.cylinder * 512));
