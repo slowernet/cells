@@ -233,4 +233,5 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
 - Drawing obstacles with a brush, and mesh upload.
 - Density and Schlieren views, and volume ray marching.
 - A shared lattice-parametric generator for 2D and 3D.
+- README minimum specs for the 3D mode: the lowest GPU and browser that run each preset smoothly, mapped to recent Apple, NVIDIA, AMD and Intel GPUs. Base it on measured MLUPS (the M5 reference: 708 FP32, 1,311 FP16 at `medium`) and each preset's memory need, and list the `shader-f16` requirement for FP16. Requested by the partner on 2026-09-27.
 - The deep-research gaps: measured WebGPU D3Q19 throughput, f16 rounding per backend, and `array<f16>` against `pack2x16float`.
