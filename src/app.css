@@ -2,63 +2,187 @@
   color-scheme: dark;
   --surface-0: #111110;
   --surface-1: #1a1a19;
+  --overlay-soft: rgba(17, 17, 16, 0.78);
+  --border: #2a2a28;
   --text-primary: #ffffff;
   --text-secondary: #c3c2b7;
   --text-muted: #8f8e86;
   --accent: #3987e5;
   --warn: #c98500;
+  --panel-w: min(360px, 100vw);
 }
 
 * { box-sizing: border-box; }
 
+html, body { height: 100%; }
+
 body {
   margin: 0;
-  height: 100vh;
-  display: grid;
-  grid-template-columns: 1fr 320px;
   background: var(--surface-0);
   color: var(--text-primary);
   font: 13px/1.4 ui-sans-serif, system-ui, sans-serif;
   overflow: hidden;
 }
 
+/* The canvas owns the viewport; overlays never resize it, so the GPU swap chain is never reallocated by UI. */
 #stage {
-  position: relative;
+  position: fixed;
+  inset: 0;
   display: grid;
   place-items: center;
-  min-width: 0;
-  padding: 12px;
+  background: var(--surface-0);
 }
 
 #view {
   display: block;
+  width: 100%;
+  height: 100%;
   touch-action: none;
   cursor: crosshair;
-  image-rendering: auto;
 }
+
+#view.fit { width: auto; height: auto; }
 
 #nogpu {
   max-width: 36em;
+  padding: 24px;
   color: var(--text-secondary);
   font-size: 15px;
 }
 
-#panel {
-  background: var(--surface-1);
-  padding: 14px 16px;
-  overflow-y: auto;
-  border-left: 1px solid #2a2a28;
-}
-
-h1 { font-size: 17px; margin: 0; }
-.sub { margin: 2px 0 10px; color: var(--text-muted); }
-
-section {
-  border-top: 1px solid #2a2a28;
-  padding: 10px 0;
+/* The only overlay on the canvas: a solid translucent fill, no backdrop-filter, which would re-blur the canvas every frame. */
+.menu-button {
+  position: fixed;
+  z-index: 4;
+  top: calc(12px + env(safe-area-inset-top));
+  right: calc(12px + env(safe-area-inset-right));
   display: grid;
-  gap: 8px;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--text-primary);
+  background: var(--overlay-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  contain: layout paint style;
 }
+
+/* Menu panel: slides over the canvas with transform only; when closed it is skipped entirely by rendering and hit-testing. */
+#panel {
+  position: fixed;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  width: var(--panel-w);
+  height: 100dvh;
+  padding: calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) 16px;
+  /* Opaque: nothing behind it needs blending, and the overlays underneath can't show through. */
+  background: var(--surface-1);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  contain: layout paint style;
+  transform: translateX(100%);
+  visibility: hidden;
+  content-visibility: hidden;
+  transition: transform 180ms ease-out, visibility 0s linear 180ms, content-visibility 0s linear 180ms;
+  transition-behavior: allow-discrete;
+}
+
+#panel.open {
+  transform: none;
+  visibility: visible;
+  content-visibility: visible;
+  transition: transform 180ms ease-out;
+}
+
+#panel:focus { outline: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  #panel, #panel.open { transition: none; }
+}
+
+/* The title leaves room for the menu button, which stays in the panel's top-right corner. */
+h1 { font-size: 17px; margin: 0; padding-right: 48px; min-height: 40px; display: flex; align-items: center; }
+.sub { margin: 2px 0 12px; color: var(--text-muted); }
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  margin: 0 0 12px;
+  background: #262624;
+  border: 1px solid #3a3a37;
+  border-radius: 8px;
+}
+.mode-switch a {
+  padding: 6px 0;
+  text-align: center;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 600;
+}
+.mode-switch a[aria-current='page'] { background: var(--accent); color: #fff; }
+.mode-switch a:not([aria-current]):hover { color: var(--text-primary); background: #2d2d2b; }
+.mode-switch a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.controls { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 0 0 12px; }
+.controls button,
+.controls .tool {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid #3a3a37;
+  border-radius: 6px;
+  background: #262624;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.controls .tool input { position: absolute; opacity: 0; pointer-events: none; }
+.controls .tool:has(input:checked) { color: var(--text-primary); border-color: var(--accent); }
+.controls .tool:has(input:focus-visible) { outline: 2px solid var(--accent); }
+.controls .brush { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 110px; padding-left: 4px; color: var(--text-secondary); }
+.controls .sep { width: 1px; height: 24px; background: var(--border); margin: 0 2px; }
+
+.stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.stats dt { color: var(--text-muted); }
+/* Tabular numbers keep each value's width fixed as it updates. */
+.stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.stats [hidden] { display: none; }
+
+.group { border-top: 1px solid var(--border); }
+.group > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.group > summary::-webkit-details-marker { display: none; }
+.group > summary .chev { margin-left: auto; color: var(--text-muted); transition: transform 120ms; }
+.group[open] > summary .chev { transform: rotate(180deg); }
+.group > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.group-body { display: grid; gap: 8px; padding: 0 0 12px; }
 
 label { display: grid; gap: 3px; color: var(--text-secondary); }
 label.check { display: flex; align-items: center; gap: 6px; }
@@ -73,26 +197,19 @@ select, input[type='number'], button {
   padding: 4px 6px;
 }
 
+select, input[type='number'] { min-height: 32px; }
 button { cursor: pointer; }
 button:hover { border-color: var(--accent); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 input[type='range'] { width: 100%; accent-color: var(--accent); }
 
-.tools { display: flex; gap: 12px; }
-.tools label { display: flex; gap: 4px; align-items: center; }
 .buttons { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .note { margin: 0; color: var(--text-muted); font-size: 12px; }
 .note.warn { color: var(--warn); }
-.note a { color: var(--text-secondary); }
 
-#stats {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 3px 12px;
-  margin: 0;
-}
-#stats dt { color: var(--text-secondary); }
-#stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.links { display: grid; gap: 6px; }
+.links a { color: var(--text-secondary); }
 
 .chart { position: relative; }
 #chart { width: 100%; height: 190px; display: block; border-radius: 4px; }

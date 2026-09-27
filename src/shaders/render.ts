@@ -11,7 +11,7 @@ struct View {
 };
 `;
 
-const COLOR_WGSL = /* wgsl */ `
+export const COLOR_WGSL = /* wgsl */ `
 fn viridis(t0: f32) -> vec3f {
   let t = clamp(t0, 0.0, 1.0);
   let c0 = vec3f(0.2777273272234177, 0.005407344544966578, 0.3340998053353061);

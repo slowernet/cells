@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" href="data:," />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Lattice Boltzmann wind tunnel · 3D</title>
+  <link rel="stylesheet" href="/src/app.css" />
+</head>
+<body>
+  <main id="stage">
+    <canvas id="view" aria-label="3D flow field; drag to orbit, scroll or pinch to zoom"></canvas>
+    <div id="nogpu" hidden></div>
+  </main>
+
+  <button class="menu-button" type="button" aria-controls="panel" aria-expanded="false" aria-label="Open settings"><span data-icon="menu"></span></button>
+
+  <aside id="panel" aria-label="Settings" tabindex="-1">
+    <h1>Wind tunnel 3D</h1>
+    <p class="sub">D3Q19 TRT lattice Boltzmann on WebGPU</p>
+
+    <nav class="mode-switch" aria-label="Tunnel mode">
+      <a href="index.html">2D</a>
+      <a href="3d.html" aria-current="page">3D</a>
+    </nav>
+
+    <div class="controls" role="toolbar" aria-label="Simulation">
+      <button id="pause" type="button" aria-label="Pause" title="Pause (Space)"><span data-icon="pause"></span></button>
+      <button id="resetFlow" type="button" aria-label="Reset flow" title="Reset flow"><span data-icon="rotate-ccw"></span></button>
+    </div>
+
+    <dl class="stats" id="stats">
+      <dt class="coef">C<sub>D</sub></dt><dd id="cd" class="coef">–</dd>
+      <dt class="coef">C<sub>L</sub></dt><dd id="cl" class="coef">–</dd>
+      <dt>Step</dt><dd id="step">0</dd>
+      <dt>Rate</dt><dd id="sps">–</dd>
+      <dt>GPU</dt><dd id="mlups">–</dd>
+    </dl>
+
+    <details class="group" open>
+      <summary><span data-icon="shapes"></span>Obstacle<span class="chev" data-icon="chevron-down"></span></summary>
+      <div class="group-body">
+        <label>Shape
+          <select id="obstacle">
+            <option value="sphere" selected>Sphere</option>
+            <option value="cube">Cube</option>
+            <option value="cylinder">Cylinder (spanwise)</option>
+            <option value="wing">Wing (NACA 0012)</option>
+            <option value="none">None</option>
+          </select>
+        </label>
+        <label><span>Size <output id="sizeOut"></output> cells</span>
+          <input id="size" type="range" min="0.05" max="0.4" step="0.01" value="0.2" />
+        </label>
+        <label><span>Angle <output id="angleOut"></output>°</span>
+          <input id="angle" type="range" min="-20" max="20" step="0.5" value="0" />
+        </label>
+      </div>
+    </details>
+
+    <details class="group" open>
+      <summary><span data-icon="wind"></span>Flow<span class="chev" data-icon="chevron-down"></span></summary>
+      <div class="group-body">
+        <label>Reynolds number
+          <input id="re" type="number" min="1" max="1000000" step="any" value="100" />
+        </label>
+        <label class="check"><input id="smag" type="checkbox" /> <span>Smagorinsky stabilizer, C<sub>s</sub> <output id="csOut"></output></span></label>
+        <input id="cs" type="range" min="0.1" max="0.17" step="0.005" value="0.16" aria-label="Smagorinsky constant" />
+        <p id="tauNote" class="note"></p>
+        <p id="reNote" class="note warn" hidden></p>
+      </div>
+    </details>
+
+    <details class="group" open>
+      <summary><span data-icon="eye"></span>View<span class="chev" data-icon="chevron-down"></span></summary>
+      <div class="group-body">
+        <label>Colour by
+          <select id="viewMode">
+            <option value="0" selected>Speed</option>
+            <option value="1">Vorticity magnitude</option>
+          </select>
+        </label>
+        <label>Slice axis
+          <select id="sliceAxis">
+            <option value="0">x (across the flow)</option>
+            <option value="1">y (horizontal)</option>
+            <option value="2" selected>z (vertical, along the flow)</option>
+            <option value="off">Off (no slice)</option>
+          </select>
+        </label>
+        <label><span>Slice position</span>
+          <input id="slicePos" type="range" min="0" max="1" step="0.01" value="0.5" />
+        </label>
+        <label class="check"><input id="tracers" type="checkbox" checked /> <span>Tracers</span></label>
+      </div>
+    </details>
+
+    <details class="group">
+      <summary><span data-icon="box"></span>Tunnel<span class="chev" data-icon="chevron-down"></span></summary>
+      <div class="group-body">
+        <label>Grid
+          <select id="grid">
+            <option value="low">128 × 64 × 64</option>
+            <option value="medium" selected>192 × 96 × 96</option>
+            <option value="high">256 × 128 × 128</option>
+          </select>
+        </label>
+        <label>Precision
+          <select id="precision">
+            <option value="fp16" selected>FP16 storage</option>
+            <option value="fp32">FP32 storage</option>
+          </select>
+        </label>
+        <p id="gridNote" class="note" hidden></p>
+      </div>
+    </details>
+
+    <details class="group">
+      <summary><span data-icon="chart-line"></span>Forces<span class="chev" data-icon="chevron-down"></span></summary>
+      <div class="group-body">
+        <div class="chart coef">
+          <canvas id="chart" aria-label="Drag and lift coefficient history"></canvas>
+          <div id="chartTip" class="tip" hidden></div>
+        </div>
+        <p class="note">Coefficients use the frontal reference area and the inlet speed.</p>
+      </div>
+    </details>
+
+    <details class="group">
+      <summary><span data-icon="link"></span>Pages<span class="chev" data-icon="chevron-down"></span></summary>
+      <div class="group-body links">
+        <a href="validate.html">Validation suite</a>
+        <a href="bench.html">MLUPS benchmark</a>
+      </div>
+    </details>
+  </aside>
+
+  <script type="module" src="/src/app3d.ts"></script>
+</body>
+</html>

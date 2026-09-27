@@ -92,7 +92,7 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
   - force reduction of `cellForce` into a vec3 history ring, as in 2D.
 - `src/solver3d.ts`:
   - `Solver3D.create(device, cfg: Solver3DConfig): Promise<Solver3D>`, where `Solver3DConfig` holds the grid W, H and D, `precision`, `tau`, `smagorinsky`, `uIn`, `spongeFraction`, `spongeTau`, `absorb`, `workgroupSize` and `forceEvery`.
-  - Methods: `setSdf(Float32Array)`, `initField()`, `setTau(tau)`, `setInlet(u)`, `encodeSteps(pass, n)`, `encodeMacro(pass)`, `readForces(): Promise<ForceSample3[]>` (`{ step, fx, fy, fz }`), `readMacro()`, `run(n)` for tests, and `destroy()`.
+  - Methods: `setSdf(Float32Array)`, `initField()`, `setTau(tau)`, `setSmagorinsky(cs)`, `setInlet(u)`, `encodeSteps(pass, n)`, `encodeMacro(pass)`, `readForces(): Promise<ForceSample3[]>` (`{ step, fx, fy, fz }`), `readMacro()`, `run(n)` for tests, and `destroy()`.
   - It exposes the `macro`, `sdf` and `flags` buffers to the renderer.
   - `fitsLimits(W, H, D, precision, limits): boolean` is exported pure.
   - `cellForce` holds N entries (16·N bytes), as the 2D solver sizes it per cell, so the slot count can't overflow it.
@@ -100,7 +100,9 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
   - Change handling, as the 2D app does:
     - obstacle, size and angle changes call `setSdf`, re-derive τ from the new reference length, and clear the force history and chart, as `resetBody` does (`src/app.ts:256-264`); the flow continues;
     - Re changes call `setTau` only;
+    - Smagorinsky changes call `setSmagorinsky` only;
     - grid and precision changes rebuild the solver: the app destroys the old solver before creating the new one, and holds a rebuild token so that a rebuild overtaken by a later one destroys its own solver and returns (`src/app.ts:138-173`).
+  > **Changed 2026-09-27:** `Solver3D` gains `setSmagorinsky(cs)`, and Smagorinsky changes call it only (from no runtime path for the Smagorinsky input to a setter like `setTau`). Why: the page's Smagorinsky control needs a way to change C_s without a rebuild, which plan 1's interface lacked. Approved by the partner in the plan 2 review, finding 8.
 - `src/gpu.ts` (changed): `initGpu(opts?: { f16?: boolean })`. With `f16: true`, it adds `'shader-f16'` to `requiredFeatures` when `adapter.features` has it. It returns `f16: boolean`, which says whether the device has the feature. `app.ts` passes nothing and behaves exactly as today. `validate.ts`, `bench.ts` and `app3d.ts` pass `{ f16: true }`.
 - `src/geometry3d.ts`: SDF builders on a W×H×D `Float32Array`, in cells and negative inside, with nodes at integer coordinates. They stamp true distances within a margin of the body and `FAR` elsewhere, as `geometry.ts` does. Union is `min`.
   - `emptySdf3(W, H, D)`
@@ -139,6 +141,34 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
     - Each is drawn as a depth-tested segment from p to p − k·u, with k = 3 / u_target, so that the target speed maps to 3 cells.
   - Vertex stages bind storage read-only.
 - `3d.html` + `src/app3d.ts`: the controls in the table below, the C_D/C_L chart through `ForceChart`, MLUPS and steps-per-second readouts, and adaptive steps per frame as in `app.ts`. The coefficients are C_D = 2F_x/(u_target² · A) and C_L = 2F_y/(u_target² · A), with A = `referenceArea(...)`. `index.html` links to `3d.html` and back, and `vite.config.ts` adds `3d.html` as a build input.
+- Page layout, on both `index.html` and `3d.html`:
+  - **Canvas**: fills the viewport (`position: fixed; inset: 0`). The 2D canvas keeps the grid's aspect ratio, centred. The canvas size comes from a `ResizeObserver` (`devicePixelContentBoxSize` where available), and opening or closing the menu never resizes it.
+  - **Menu button**: top right, with the Lucide `menu` icon, which becomes `x` while open. It opens a panel that slides in from the right over the canvas, `min(360px, 100vw)` wide and `100dvh` tall. The panel is closed by default and closes with its button, with Escape, or with a click or tap anywhere outside it. That outside press only closes the menu: it doesn't draw in 2D or start an orbit in 3D. It is the only element over the canvas.
+  - **Panel header**, top to bottom, above the groups:
+    1. a 2D | 3D segmented switch (links to `index.html` and `3d.html`, with the current page marked `aria-current`);
+    2. the controls row: play/pause and reset flow, plus draw, erase, probe and brush size on the 2D page;
+    3. the stats: C_D, C_L, steps/s and MLUPS, plus Strouhal and the probe value on the 2D page.
+
+    Space toggles pause on both pages, with the menu open or closed.
+  - **Menu groups**: collapsible `<details>` sections, each with an icon:
+    - Tunnel (`box`)
+    - Obstacle (`shapes`)
+    - Flow (`wind`)
+    - View (`eye`)
+    - Simulation (`gauge`; 2D only)
+    - Forces (`chart-line`)
+    - Pages (`link`): validation and benchmark
+  - **Scrolling**: the panel has `overflow-y: auto`, `overscroll-behavior: contain`, `touch-action: pan-y` and safe-area padding, so it scrolls on desktop and on mobile.
+  - **Stats**: tabular numerals in fixed-width boxes.
+  - **Performance**:
+    - nothing over the canvas uses `backdrop-filter`;
+    - the panel animates only `transform` and has `contain: layout paint style`;
+    - a closed panel has `visibility: hidden` and `content-visibility: hidden`.
+  - **Icons**: inline Lucide SVGs in `src/icons.ts`, with Lucide's ISC notice, so no new dependency.
+  - Control element ids stay as they are.
+  > **Changed 2026-09-27 (third):** a click or tap outside the open panel closes it and is consumed. Previously only the button and Escape closed it, and canvas clicks went through to drawing or orbiting. Why: the partner asked for clicking off the menu to close it. Approved by the partner on 2026-09-27.
+  > **Changed 2026-09-27 (second):** the menu button moves to the top right, and the panel slides in from the right. The toolbar controls and the stats move from floating overlays into the panel header, and a 2D | 3D switch heads the panel. Previously the toolbar and the readout box were always visible over the canvas, and the only 2D/3D link was in the Pages group. Why: the partner wants nothing over the canvas but the menu button, the controls and stats at the top of the menu, and a visible mode switch. Approved by the partner on 2026-09-27.
+  > **Changed 2026-09-27:** both pages move from a fixed side panel to a full-viewport canvas with an overlay menu, toolbar and readout box, as specified above. Previously the Assumptions said "The UI follows the 2D page's layout and style". Why: the partner asked for maximum screen space for the render, a better-grouped menu that scrolls on desktop and mobile, and Lucide icons for navigation. Approved by the partner on 2026-09-27, after the design was presented. Success criterion 7 and Assumptions change with it.
 
 ### Data flow
 
@@ -160,8 +190,10 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
 | Precision | FP16 (if `shader-f16`), FP32 | FP16 if available |
 | Smagorinsky | off, or on with C_s 0.10 to 0.17 | off |
 | View | speed, vorticity | speed |
-| Slice axis / position | x, y, z / 0 to 1 | z / 0.5 |
+| Slice axis / position | x, y, z, off / 0 to 1 | z / 0.5 |
 | Tracers | on, off | on |
+
+> **Changed 2026-09-27:** the slice axis gains "off", which hides the slice plane (from x, y, z only). Why: the partner asked for a way to remove the slice entirely. Approved by the partner on 2026-09-27.
 
 - **No WebGPU or no adapter**: the page shows the 2D page's message and draws nothing.
 - **No `shader-f16`**: the precision control is disabled at FP32, with a note saying FP16 isn't available on this device.
@@ -189,6 +221,14 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
    - there are no console errors;
    - the canvas isn't blank (some pixel differs from the clear color).
 
+7. On both pages, at a 1400×800 desktop viewport and a 390×844 phone viewport, a Playwright test checks that:
+   - the menu button opens and closes the panel, Escape closes it, and a click outside the panel closes it without drawing or orbiting;
+   - an open panel whose content is taller than the viewport scrolls, because its `scrollTop` changes;
+   - the canvas's pixel size is the same with the menu open and closed;
+   - the existing control ids still drive the page;
+   - the 2D | 3D switch links to the other page and marks the current one.
+   > **Changed 2026-09-27:** new criterion for the overlay menu; see the change note under Plan 2's page layout.
+
 ## Assumptions
 
 - The reference machine is the partner's Apple M5 (10 GPU cores, 153 GB/s). Low-end and phone GPUs are out of scope.
@@ -197,7 +237,7 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
 - The sphere sits 3 diameters from the inlet in `sphereFp16`, which confines it more than the 2D references allow. That biases both precisions equally, so the FP16-to-FP32 comparison is still valid. The comparison with published drag is reported, not gated, for this reason.
 - The published sphere drag at Re 100 is C_D ≈ 1.09 (Johnson & Patel 1999). **Unverified**: the research didn't retrieve it, and it is reported only.
 - WGSL leaves the f32 → f16 rounding mode unspecified. If the M5's backend truncates, FP16 accuracy may be worse than Lehmann's figures. `sphereFp16` measures the combined effect.
-- The UI follows the 2D page's layout and style.
+- Both pages share the overlay layout in `src/app.css` (see Plan 2, Page layout). > **Changed 2026-09-27:** was "The UI follows the 2D page's layout and style"; see the change note under Plan 2's page layout.
 
 ## References
 
@@ -233,5 +273,5 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
 - Drawing obstacles with a brush, and mesh upload.
 - Density and Schlieren views, and volume ray marching.
 - A shared lattice-parametric generator for 2D and 3D.
-- README minimum specs for the 3D mode: the lowest GPU and browser that run each preset smoothly, mapped to recent Apple, NVIDIA, AMD and Intel GPUs. Base it on measured MLUPS (the M5 reference: 708 FP32, 1,311 FP16 at `medium`) and each preset's memory need, and list the `shader-f16` requirement for FP16. Requested by the partner on 2026-09-27.
+- README minimum specs for the 3D mode: the lowest GPU and browser that run each preset smoothly, mapped to recent Apple, NVIDIA, AMD and Intel GPUs. Base it on measured MLUPS (the M5 reference: 708 FP32, 1,311 FP16 at `medium`) and each preset's memory need, and list the `shader-f16` requirement for FP16. Requested by the partner on 2026-09-27. Done on 2026-09-27: README section "GPU requirements", with bandwidth-scaled estimates from the M5 measurements.
 - The deep-research gaps: measured WebGPU D3Q19 throughput, f16 rounding per backend, and `array<f16>` against `pack2x16float`.
