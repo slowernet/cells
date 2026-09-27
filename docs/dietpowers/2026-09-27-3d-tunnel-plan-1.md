@@ -119,7 +119,7 @@ Commits: approved
   - `addSphere` stamps the distance to the center minus r.
   - `addBox3` rotates about the z axis through (cx, cy) by `angleZ` radians counter-clockwise, then stamps the exact box distance with half-extents (hx, hy, hz), extending `addBox` to 3D.
   - `addCylinderZ` stamps the disc distance in x-y for every z from 0 to D − 1.
-  - `addWing` builds `nacaPolygon(0, 0, chord, 0.12, angleZ)`, then translates every point so that the mid-chord point (the rotated image of (chord/2, 0)) lands at (cx, cy). The wing then pivots about its mid-chord, as the cube pivots about its centre, and stays centred at any angle. In x-y it takes the signed polygon distance d2, as `addPolygon` computes it. In z it takes dz = |z − cz| − span/2. The stamped value is `max(d2, dz)` when either is negative, and `hypot(max(d2, 0), max(dz, 0))` otherwise, which gives flat tips.
+  - `addWing` builds `nacaPolygon(0, 0, chord, 0.12, angleZ)`, then translates every point by (cx, cy) − chord/2·(cos α, −sin α), with α = angleZ. `nacaPolygon` rotates by −α (`src/geometry.ts:54-56`), so chord/2·(cos α, −sin α) is where it puts the mid-chord, and the translation lands the mid-chord at (cx, cy). The wing then pivots about its mid-chord, as the cube pivots about its centre, and stays centred at any angle. In x-y it takes the signed polygon distance d2, as `addPolygon` computes it. In z it takes dz = |z − cz| − span/2. The stamped value is `max(d2, dz)` when either is negative, and `hypot(max(d2, 0), max(dz, 0))` otherwise, which gives flat tips.
   - `referenceArea(obstacle, size, D)`, with `size` in cells, returns:
     - sphere: π·size²/4;
     - cube: size²;
@@ -131,7 +131,11 @@ Commits: approved
   - `sphere sign and distance`: the center reads −r; a node 2 cells outside the surface along +x reads 2 ± 1e-6; a node beyond the margin reads `FAR`. Dropping the "− r" fails it.
   - `box rotation`: a box with hx = 8, hy = hz = 1 at angleZ = π/6 has the point 6 cells from the centre along the +30° ray inside, and the mirrored point on the −30° ray outside. A clockwise rotation fails it.
   - `cylinder spans z`: the axis node reads −r at z = 0 and at z = D − 1.
-  - `wing stays centred when angled`: at angleZ = 20° with chord 19.2, the mean of the stamped interior nodes' x-y coordinates at z = cz lies within 0.5 cells of (cx, cy). Pivoting about the leading edge (about 3.3 cells off in y) fails it.
+  - `wing pivots about mid-chord`: at angleZ = 20°, chord 19.2, and with d = (cos 20°, −sin 20°), sampling the SDF by trilinear interpolation at z = cz:
+    - (cx, cy), (cx, cy) + (chord/2 − 1.5)·d and (cx, cy) − (chord/2 − 1.5)·d read negative;
+    - (cx, cy) + (chord/2 + 1.5)·d and (cx, cy) − (chord/2 + 1.5)·d read positive.
+
+    A leading-edge pivot (about 3.3 cells off) or the wrong sine sign fails it.
   - `wing tips are flat`: at cz ± (span/2 + 1), a node at the section's thickest point reads 1 ± 0.05. Inside the span, the same x-y point is negative.
   - `referenceArea`: the five values above for size = 16 and D = 96, for example sphere 201.06 ± 0.01. Passing a fraction of H instead of cells is a caller bug that this test doesn't catch; `sphereFp16` passes cells.
 - **Command**: `npm test -- geometry3d`.
