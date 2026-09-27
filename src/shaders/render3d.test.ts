@@ -1,8 +1,8 @@
 import { test, expect } from 'vitest';
-import { VIEW3_WGSL, outlineShader, obstacleShader, sliceShader } from './render3d';
+import { VIEW3_WGSL, outlineShader, obstacleShader, sliceShader, tracerLineShader } from './render3d';
 import { VIEW3_BYTES, VIEW3_OFFSETS } from '../view3d';
 
-const modules = () => [outlineShader(), obstacleShader(), sliceShader()];
+const modules = () => [outlineShader(), obstacleShader(), sliceShader(), tracerLineShader()];
 
 test('vertex stages read storage read-only', () => {
   for (const code of modules()) expect(code).not.toContain('var<storage, read_write>');
@@ -44,4 +44,11 @@ test('struct matches packing', () => {
   const size = Math.ceil(offset / maxAlign) * maxAlign;
   expect(computed).toEqual({ ...VIEW3_OFFSETS });
   expect(size).toBe(VIEW3_BYTES);
+});
+
+test('line module binds particles read-only', () => {
+  const code = tracerLineShader();
+  expect(code).toMatch(/@binding\(4\) var<storage, read> particles/);
+  expect(code).toContain('@binding(1)');
+  expect(code).not.toContain('@binding(0)');
 });

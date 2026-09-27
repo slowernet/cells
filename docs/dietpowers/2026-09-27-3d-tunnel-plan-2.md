@@ -184,7 +184,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 - Departure: `Renderer3D` gains `afterSubmit()`, which the app calls after `device.queue.submit`. A readback buffer can't be mapped until the commands that write it are submitted, so `requestPixelCount` records its copy in `encode` and maps the buffer in `afterSubmit`.
 - Departure: `COLOR_WGSL` in `src/shaders/render.ts` is now exported, so the slice reuses the 2D `viridis`. The 2D output is unchanged.
 
-### - [ ] Task 4: Tracers
+### - [x] Task 4: Tracers
 
 - **Files**: modify `src/view3d.ts`, `src/view3d.test.ts`, `src/shaders/render3d.ts`, `src/shaders/render3d.test.ts` and `src/render3d.ts`.
 - **Interfaces produced**:
@@ -208,6 +208,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
     - `tracerSubsteps`: 1 for (0.1, 10) (1 cell), 1 for (0.1, 20) (exactly 2 cells), and 4 for (0.1, 34).
   - `src/shaders/render3d.test.ts`, `line module binds particles read-only`: `tracerLineShader()` declares `particles` as `var<storage, read>` at binding 4, declares binding 1, and declares no binding 0.
 - **Command**: `npm test -- view3d render3d`, then the shader compile check from Conventions for the advect and line modules.
+- Departure: the compile check ran through `.dietpowers/compile-check.mjs` again (see Task 3), for all five modules. None had errors.
 
 ### - [ ] Task 5: The 3D page
 

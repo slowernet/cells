@@ -179,3 +179,68 @@ struct VsOut { @builtin(position) pos: vec4f, @location(0) world: vec3f };
 }
 `;
 }
+
+export const TRACER_WG = 64;
+
+/** Moves tracers through the macro field; two vec4 per particle (position, velocity). */
+export function advectShader(): string {
+  return /* wgsl */ `${header}
+@group(0) @binding(2) var<storage, read> mac: array<vec4f>;
+@group(0) @binding(3) var<storage, read> seeds: array<vec4f>;
+@group(0) @binding(4) var<storage, read_write> particles: array<vec4f>;
+${MACRO_SAMPLE_WGSL}
+
+fn inside(p: vec3f) -> bool {
+  let hi = vec3f(f32(P.W), f32(P.H), f32(P.D)) - 0.5;
+  return all(p >= vec3f(-0.5)) && all(p <= hi);
+}
+
+@compute @workgroup_size(${TRACER_WG})
+fn advect(@builtin(global_invocation_id) g: vec3u) {
+  let i = g.x;
+  if (i >= V.count) { return; }
+  var p = particles[2u * i].xyz;
+  // Midpoint rule over the lattice steps taken this frame, split so no sub-step moves more than a cell.
+  let travel = V.uRef * V.steps;
+  let n = select(1u, u32(ceil(travel)), travel > 2.0);
+  let h = V.steps / f32(n);
+  for (var k = 0u; k < n; k++) {
+    let v1 = velocity(p);
+    p += h * velocity(p + 0.5 * h * v1);
+    if (!inside(p) || solidAt(p)) {
+      p = seeds[i].xyz;
+      break;
+    }
+  }
+  particles[2u * i] = vec4f(p, 0.0);
+  particles[2u * i + 1u] = vec4f(velocity(p), 0.0);
+}
+`;
+}
+
+/** Draws each tracer as a segment from p back along its velocity; vertex stages may only read storage. */
+export function tracerLineShader(): string {
+  return /* wgsl */ `
+${VIEW3_WGSL}
+@group(0) @binding(1) var<uniform> V: View3;
+@group(0) @binding(4) var<storage, read> particles: array<vec4f>;
+${COLOR_WGSL}
+
+struct VsOut { @builtin(position) pos: vec4f, @location(0) speed: f32 };
+
+@vertex fn vs(@builtin(vertex_index) vi: u32) -> VsOut {
+  let k = vi / 2u;
+  let p = particles[2u * k].xyz;
+  let u = particles[2u * k + 1u].xyz;
+  let end = select(p, p - (3.0 / V.uRef) * u, (vi & 1u) == 1u);
+  var o: VsOut;
+  o.pos = V.viewProj * vec4f(end, 1.0);
+  o.speed = length(u);
+  return o;
+}
+
+@fragment fn fs(in: VsOut) -> @location(0) vec4f {
+  return vec4f(viridis(in.speed / (1.6 * V.uRef)), 0.8);
+}
+`;
+}

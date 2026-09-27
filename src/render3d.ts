@@ -1,6 +1,6 @@
 import type { Solver3D } from './solver3d';
-import { VIEW3_BYTES, packView3, type View3 } from './view3d';
-import { outlineShader, obstacleShader, sliceShader } from './shaders/render3d';
+import { VIEW3_BYTES, packView3, rakeSeeds, TRACER_COUNT, type View3 } from './view3d';
+import { outlineShader, obstacleShader, sliceShader, advectShader, tracerLineShader, TRACER_WG } from './shaders/render3d';
 
 const CLEAR = [0.07, 0.07, 0.08];
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
@@ -18,6 +18,12 @@ export class Renderer3D {
   private outlinePipe!: GPURenderPipeline;
   private obstaclePipe!: GPURenderPipeline;
   private slicePipe!: GPURenderPipeline;
+  private advectPipe!: GPUComputePipeline;
+  private linePipe!: GPURenderPipeline;
+  private advectBG!: GPUBindGroup;
+  private lineBG!: GPUBindGroup;
+  private seeds: GPUBuffer | null = null;
+  private particles: GPUBuffer | null = null;
   private outlineBG!: GPUBindGroup;
   private obstacleBG!: GPUBindGroup;
   private sliceBG!: GPUBindGroup;
@@ -46,10 +52,23 @@ export class Renderer3D {
         depthStencil: depthStencil(true),
       });
     };
-    [this.outlinePipe, this.obstaclePipe, this.slicePipe] = await Promise.all([
+    const line = d.createShaderModule({ code: tracerLineShader() });
+    [this.outlinePipe, this.obstaclePipe, this.slicePipe, this.advectPipe, this.linePipe] = await Promise.all([
       pipe(outlineShader(), 'line-list'),
       pipe(obstacleShader(), 'triangle-list'),
       pipe(sliceShader(), 'triangle-list'),
+      d.createComputePipelineAsync({ layout: 'auto', compute: { module: d.createShaderModule({ code: advectShader() }), entryPoint: 'advect' } }),
+      d.createRenderPipelineAsync({
+        layout: 'auto',
+        vertex: { module: line, entryPoint: 'vs' },
+        fragment: {
+          module: line,
+          entryPoint: 'fs',
+          targets: [{ format: this.format, blend: { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }],
+        },
+        primitive: { topology: 'line-list' },
+        depthStencil: depthStencil(false),
+      }),
     ]);
   }
 
@@ -61,6 +80,29 @@ export class Renderer3D {
     this.outlineBG = bg(this.outlinePipe, [solver.params, this.view]);
     this.obstacleBG = bg(this.obstaclePipe, [solver.params, this.view, solver.sdf]);
     this.sliceBG = bg(this.slicePipe, [solver.params, this.view, solver.macro]);
+
+    this.seeds?.destroy();
+    this.particles?.destroy();
+    this.count = TRACER_COUNT;
+    const seeds = rakeSeeds(solver.W, solver.H, solver.D);
+    // Spread the first positions downstream so the tracers don't start as one sheet.
+    const init = new Float32Array(TRACER_COUNT * 8);
+    for (let i = 0; i < TRACER_COUNT; i++) {
+      init.set([0.1 * solver.W + Math.random() * 0.8 * solver.W, seeds[i * 4 + 1], seeds[i * 4 + 2], 0], i * 8);
+    }
+    this.seeds = d.createBuffer({ size: seeds.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    d.queue.writeBuffer(this.seeds, 0, seeds);
+    this.particles = d.createBuffer({ size: init.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    d.queue.writeBuffer(this.particles, 0, init);
+    this.advectBG = d.createBindGroup({
+      layout: this.advectPipe.getBindGroupLayout(0),
+      entries: [solver.params, this.view, solver.macro, this.seeds, this.particles].map((buffer, binding) => ({ binding, resource: { buffer } })),
+    });
+    // layout: 'auto' keeps only the bindings the line module uses, so number them explicitly.
+    this.lineBG = d.createBindGroup({
+      layout: this.linePipe.getBindGroupLayout(0),
+      entries: [{ binding: 1, resource: { buffer: this.view } }, { binding: 4, resource: { buffer: this.particles } }],
+    });
   }
 
   /** Recreates the depth buffer at the canvas resolution. */
@@ -73,6 +115,13 @@ export class Renderer3D {
   encode(enc: GPUCommandEncoder, view: View3) {
     view.count = this.count;
     this.device.queue.writeBuffer(this.view, 0, packView3(view));
+    if (view.tracers && view.steps > 0) {
+      const cp = enc.beginComputePass();
+      cp.setPipeline(this.advectPipe);
+      cp.setBindGroup(0, this.advectBG);
+      cp.dispatchWorkgroups(Math.ceil(this.count / TRACER_WG));
+      cp.end();
+    }
     const target = this.context.getCurrentTexture();
     const pass = enc.beginRenderPass({
       colorAttachments: [{ view: target.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [...CLEAR, 1] }],
@@ -87,6 +136,11 @@ export class Renderer3D {
     pass.setPipeline(this.slicePipe);
     pass.setBindGroup(0, this.sliceBG);
     pass.draw(6);
+    if (view.tracers) {
+      pass.setPipeline(this.linePipe);
+      pass.setBindGroup(0, this.lineBG);
+      pass.draw(this.count * 2);
+    }
     pass.end();
 
     const req = this.pixelRequest;

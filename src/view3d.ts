@@ -65,3 +65,23 @@ export function packView3(v: View3): ArrayBuffer {
   u[o.tracers / 4] = v.tracers ? 1 : 0;
   return buf;
 }
+
+export const TRACER_COUNT = 16384;
+export const RAKE = 128;
+
+/** Seed points (x, y, z, 0) on a RAKE x RAKE grid at x = 0.1 W across the middle half of y and z. */
+export function rakeSeeds(W: number, H: number, D: number): Float32Array {
+  const s = new Float32Array(TRACER_COUNT * 4);
+  for (let i = 0; i < TRACER_COUNT; i++) {
+    const y = H / 4 + (((i % RAKE) + 0.5) / RAKE) * (H / 2);
+    const z = D / 4 + ((Math.floor(i / RAKE) + 0.5) / RAKE) * (D / 2);
+    s.set([0.1 * W, y, z, 0], i * 4);
+  }
+  return s;
+}
+
+/** Sub-steps for one frame of tracer advection: one unless the frame moves more than 2 cells at uTarget. */
+export function tracerSubsteps(uTarget: number, steps: number): number {
+  const travel = uTarget * steps;
+  return travel > 2 ? Math.ceil(travel) : 1;
+}

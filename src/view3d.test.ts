@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { packView3, VIEW3_BYTES, VIEW3_OFFSETS, type View3 } from './view3d';
+import { packView3, VIEW3_BYTES, VIEW3_OFFSETS, rakeSeeds, tracerSubsteps, TRACER_COUNT, type View3 } from './view3d';
 
 const view: View3 = {
   viewProj: new Float32Array(16).map((_, i) => i + 1),
@@ -39,4 +39,29 @@ test('packView3 layout', () => {
   expect(u[at('count')]).toBe(16384);
   expect(u[at('frame')]).toBe(7);
   expect(u[at('tracers')]).toBe(1);
+});
+
+test('rakeSeeds', () => {
+  const [W, H, D] = [192, 96, 96];
+  const s = rakeSeeds(W, H, D);
+  expect(s.length).toBe(TRACER_COUNT * 4);
+  expect(TRACER_COUNT).toBe(16384);
+  const step = H / 2 / 128;
+  let minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (let i = 0; i < TRACER_COUNT; i++) {
+    expect(s[i * 4]).toBeCloseTo(0.1 * W, 4);
+    minY = Math.min(minY, s[i * 4 + 1]); maxY = Math.max(maxY, s[i * 4 + 1]);
+    minZ = Math.min(minZ, s[i * 4 + 2]); maxZ = Math.max(maxZ, s[i * 4 + 2]);
+  }
+  expect(minY).toBeCloseTo(H / 4 + step / 2, 5);
+  expect(maxY).toBeCloseTo((3 * H) / 4 - step / 2, 5);
+  expect(minZ).toBeCloseTo(D / 4 + step / 2, 5);
+  expect(maxZ).toBeCloseTo((3 * D) / 4 - step / 2, 5);
+});
+
+test('tracerSubsteps', () => {
+  expect(tracerSubsteps(0.1, 10)).toBe(1);
+  expect(tracerSubsteps(0.1, 20)).toBe(1);
+  expect(tracerSubsteps(0.1, 34)).toBe(4);
+  expect(tracerSubsteps(0.1, 0)).toBe(1);
 });
