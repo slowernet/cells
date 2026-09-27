@@ -143,7 +143,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
   - `src/solver3d.test.ts`, `setSmagorinsky writes smagC2`: after `setSmagorinsky(0.16)`, params f32 index 10 reads 0.0256.
 - **Command**: `npm test -- tunnel3d solver3d`.
 
-### - [ ] Task 3: The renderer: outline, obstacle and slice
+### - [x] Task 3: The renderer: outline, obstacle and slice
 
 - **Files**: create `src/view3d.ts`, `src/view3d.test.ts`, `src/shaders/render3d.ts`, `src/shaders/render3d.test.ts` and `src/render3d.ts`.
 - **Interfaces produced**:
@@ -180,6 +180,9 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
     - `obstacle writes depth and clips to the box`: `obstacleShader()` contains `@builtin(frag_depth)`, `boxMin` and `boxMax`, and its step clamp is at most `1.0`.
     - `struct matches packing`: parse `VIEW3_WGSL`'s fields and types, compute each offset with WGSL's uniform layout rules (f32/u32 size and alignment 4, vec3f size 12 and alignment 16, mat4x4f size 64 and alignment 16, struct size rounded up to 16), and compare the offsets with `VIEW3_OFFSETS` and the size with `VIEW3_BYTES`. Drift in either fails it.
 - **Command**: `npm test -- view3d render3d`, then the shader compile check from Conventions for the outline, obstacle and slice modules.
+- Departure: the chrome-devtools MCP couldn't start its browser, because its profile was locked by a browser another session had open. The compile check ran instead through `.dietpowers/compile-check.mjs`, a gitignored Playwright script using headless Chrome with the GPU-test flags. It does the same thing: it imports the module from the dev server, calls `createShaderModule`, and reads the `getCompilationInfo` errors. Outline, obstacle and slice: no errors.
+- Departure: `Renderer3D` gains `afterSubmit()`, which the app calls after `device.queue.submit`. A readback buffer can't be mapped until the commands that write it are submitted, so `requestPixelCount` records its copy in `encode` and maps the buffer in `afterSubmit`.
+- Departure: `COLOR_WGSL` in `src/shaders/render.ts` is now exported, so the slice reuses the 2D `viridis`. The 2D output is unchanged.
 
 ### - [ ] Task 4: Tracers
 
