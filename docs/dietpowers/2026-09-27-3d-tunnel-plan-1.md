@@ -141,7 +141,7 @@ Commits: approved
 - **Command**: `npm test -- geometry3d`.
 - Departure: `wing pivots about mid-chord` checks the interior nodes at z = cz instead of trilinear samples 1.5 cells inside each end. A NACA0012 is about 0.2 cells thick 1.5 cells from its trailing edge, so trilinear sampling reads a correct build as outside. The test now requires the centre sample to be negative, the interior nodes' extent along d to lie within [−chord/2, −chord/2 + 1.5] and [chord/2 − 3, chord/2], and every interior node to lie within 0.06·chord + 1 of the chord line. A mutation check confirmed that a wrong sine sign and a leading-edge pivot both fail it.
 
-### - [ ] Task 3: Params3, the storage codec and fitsLimits
+### - [x] Task 3: Params3, the storage codec and fitsLimits
 
 - **Files**: create `src/shaders/common3d.ts` and `src/shaders/common3d.test.ts`.
 - **Interfaces produced**:
