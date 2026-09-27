@@ -119,7 +119,7 @@ Commits: approved
   - `addSphere` stamps the distance to the center minus r.
   - `addBox3` rotates about the z axis through (cx, cy) by `angleZ` radians counter-clockwise, then stamps the exact box distance with half-extents (hx, hy, hz), extending `addBox` to 3D.
   - `addCylinderZ` stamps the disc distance in x-y for every z from 0 to D − 1.
-  - `addWing` builds `nacaPolygon(cx − chord/2, cy, chord, 0.12, angleZ)`, which puts the leading edge at cx − chord/2. In x-y it takes the signed polygon distance d2, as `addPolygon` computes it. In z it takes dz = |z − cz| − span/2. The stamped value is `max(d2, dz)` when either is negative, and `hypot(max(d2, 0), max(dz, 0))` otherwise, which gives flat tips.
+  - `addWing` builds `nacaPolygon(0, 0, chord, 0.12, angleZ)`, then translates every point so that the mid-chord point (the rotated image of (chord/2, 0)) lands at (cx, cy). The wing then pivots about its mid-chord, as the cube pivots about its centre, and stays centred at any angle. In x-y it takes the signed polygon distance d2, as `addPolygon` computes it. In z it takes dz = |z − cz| − span/2. The stamped value is `max(d2, dz)` when either is negative, and `hypot(max(d2, 0), max(dz, 0))` otherwise, which gives flat tips.
   - `referenceArea(obstacle, size, D)`, with `size` in cells, returns:
     - sphere: π·size²/4;
     - cube: size²;
@@ -129,30 +129,32 @@ Commits: approved
   - The app's wing span is 0.6·D. Callers pass `span = 0.6·D` to `addWing`.
 - **Tests** (`src/geometry3d.test.ts`), on a 32×24×20 grid:
   - `sphere sign and distance`: the center reads −r; a node 2 cells outside the surface along +x reads 2 ± 1e-6; a node beyond the margin reads `FAR`. Dropping the "− r" fails it.
-  - `box rotation`: with angleZ = π/2, a point on the rotated long axis is inside and the same point on the unrotated axis is outside. A rotation with the wrong sign fails it.
+  - `box rotation`: a box with hx = 8, hy = hz = 1 at angleZ = π/6 has the point 6 cells from the centre along the +30° ray inside, and the mirrored point on the −30° ray outside. A clockwise rotation fails it.
   - `cylinder spans z`: the axis node reads −r at z = 0 and at z = D − 1.
+  - `wing stays centred when angled`: at angleZ = 20° with chord 19.2, the mean of the stamped interior nodes' x-y coordinates at z = cz lies within 0.5 cells of (cx, cy). Pivoting about the leading edge (about 3.3 cells off in y) fails it.
   - `wing tips are flat`: at cz ± (span/2 + 1), a node at the section's thickest point reads 1 ± 0.05. Inside the span, the same x-y point is negative.
   - `referenceArea`: the five values above for size = 16 and D = 96, for example sphere 201.06 ± 0.01. Passing a fraction of H instead of cells is a caller bug that this test doesn't catch; `sphereFp16` passes cells.
 - **Command**: `npm test -- geometry3d`.
 
 ### - [ ] Task 3: Params3, the storage codec and fitsLimits
 
-- **Files**: create `src/shaders/common3d.ts`, `src/shaders/common3d.test.ts` and `src/solver3d.ts`. This task creates `solver3d.ts` holding only the exports below; Task 6 adds the class.
+- **Files**: create `src/shaders/common3d.ts` and `src/shaders/common3d.test.ts`.
 - **Interfaces produced**:
   - `type Precision = 'fp16' | 'fp32'`, exported from `common3d.ts`.
   - `PARAMS3_BYTES = 64` and `PARAMS3_WGSL`. The struct `Params3` is `{ W: u32, H: u32, D: u32, N: u32, groupsX: u32, _p0: u32, _p1: u32, _p2: u32, tau: f32, lambda: f32, smagC2: f32, uIn: f32, spongeStart: f32, tauSponge: f32, absorb: f32, _p3: f32 }`.
   - `LATTICE3_WGSL`: const arrays `CX`, `CY`, `CZ` (i32), `WT` (f32), `OPP`, `MIRROR_Y` and `MIRROR_Z` (u32), the flag constants, and `fn cellIndex(wg: vec3u, li: u32) -> u32` as in `common.ts`.
   - `storageDecl(precision): string`, which returns `'enable f16;\n'` for fp16 and `''` for fp32. The caller puts it first in the module.
   - `fElem(precision): 'f16' | 'f32'`.
-  - `codecWgsl(precision, bufferName): string`, which defines `fn load_<bufferName>(k: u32) -> f32` and `fn store_<bufferName>(k: u32, v: f32)` over the buffer's flat index k = i·N + cell.
+  - `codecWgsl(precision, bufferName, access: 'read' | 'read_write'): string`, which defines `fn load_<bufferName>(k: u32) -> f32` and, only for `'read_write'`, `fn store_<bufferName>(k: u32, v: f32)`, over the buffer's flat index k = i·N + cell. WGSL rejects any assignment to a `var<storage, read>`, even in a function that is never called, so a read-only buffer must get no `store_`.
     - fp32: plain access.
     - fp16: `store` writes `f16(clamp(v, -1.99, 1.99) * 32768.0)` and `load` returns `f32(x) * (1.0 / 32768.0)`.
   - `bytesPerPopulation(precision)`, which returns 2 or 4.
-  - `fitsLimits(W, H, D, precision, limits: { maxStorageBufferBindingSize: number; maxBufferSize: number }): boolean`, exported from `src/solver3d.ts`. It is true when `19 · bytesPerPopulation · W·H·D` is at most both limits.
-  - `PRESETS3 = { low: [128, 64, 64], medium: [192, 96, 96], high: [256, 128, 128] } as const`, exported from `src/solver3d.ts`.
+  - `fitsLimits(W, H, D, precision, limits: { maxStorageBufferBindingSize: number; maxBufferSize: number }): boolean`, exported from `common3d.ts`, which reads no GPU globals, so unit tests import it directly. Task 6's `solver3d.ts` re-exports it, as the spec names it there. It is true when `19 · bytesPerPopulation · W·H·D` is at most both limits.
+  - `PRESETS3 = { low: [128, 64, 64], medium: [192, 96, 96], high: [256, 128, 128] } as const`, exported from `common3d.ts` and re-exported by `solver3d.ts`.
 - **Context**: imitate `src/shaders/common.ts`. There is no `inletVelocity` function, because the 3D inflow is uniform (`P.uIn`, 0, 0).
 - **Tests** (`src/shaders/common3d.test.ts`):
   - `Params3 layout`: parse the field list out of `PARAMS3_WGSL` and check it has 16 four-byte fields, 16 × 4 = `PARAMS3_BYTES`, and `tau` at field 8 and `uIn` at field 11. Moving a field without updating the constant fails it.
+  - `codec access`: `codecWgsl(p, 'x', 'read')` defines `load_x` and no `store_x` in both precisions, and `'read_write'` defines both. Emitting `store_` for a read buffer fails it.
   - `codec`: the fp16 codec text contains `32768.0`, `1.0 / 32768.0` and `clamp(v, -1.99, 1.99)`, and `storageDecl('fp16')` starts with `enable f16;`. The fp32 codec contains none of these, and `storageDecl('fp32')` is empty. Dropping the scale fails it.
   - `fitsLimits`: against 128 MiB:
     - low fits in both precisions;
@@ -199,6 +201,7 @@ Commits: approved
 - **Tests** (`src/shaders/step3d.test.ts`):
   - `fast path loads only its pulls`: in both precisions, the text between the fast-path comments contains exactly 19 `load_src(` calls and no other `src`, `sdf`, `slot` or `flags` access, and `main` contains exactly one `flags[` read. Adding a load to the fast path fails it.
   - `precision header`: the fp16 module starts with `enable f16;` and declares `array<f16>` for src and dst; the fp32 module has no `enable` and uses `array<f32>`. A missing header fails it.
+  - `no store to read-only src`: neither module contains `store_src`. Generating the codec for `src` with `'read_write'` fails it.
   - `bindings`: bindings 0 through 6 each appear exactly once and binding 7 does not, and at most 8 `var<storage` declarations exist. A seventh storage buffer or a duplicate binding fails it.
   - `equilibria are shifted`: every `feq` call site goes through the single shifted-form function, and the text contains no `- WT[` subtraction applied to an equilibrium. Computing f_eq − w by subtraction fails it.
 - **Command**: `npm test -- step3d`. The GPU correctness check is `sphereFp16` in Task 8.
@@ -232,12 +235,13 @@ Commits: approved
 - **Tests** (`src/shaders/aux3d.test.ts`):
   - `macro marks solids with rho 0`: the solid branch writes `vec4f(0.0)`, and the fluid branch writes ρ into `.w`. Writing ρ into `.x`, as 2D does, fails it.
   - `precision header` for each of `flags3dShader`, `init3dShader` and `macro3dShader`, as in Task 4.
+  - `no store to read-only f`: `macro3dShader` contains no `store_f`, in both precisions.
   - `flags binds at most 8 storage buffers`: 7 storage buffers plus the uniform.
 - **Command**: `npm test -- aux3d`. The GPU behavior is checked by `sphereFp16` in Task 8.
 
 ### - [ ] Task 6: Solver3D and the f16 device option
 
-- **Files**: modify `src/solver3d.ts` and `src/gpu.ts`; create `src/solver3d.test.ts`.
+- **Files**: create `src/solver3d.ts` and `src/solver3d.test.ts`; modify `src/gpu.ts`.
 - **Interfaces produced**:
   - `Solver3DConfig`: `{ width, height, depth, precision: Precision, tau, lambda?, smagorinsky?, uIn?, spongeFraction?, spongeTau?, absorb?, workgroupSize?, forceEvery? }`. The defaults are λ = `MAGIC_LAMBDA`, smagorinsky 0, uIn 0, spongeFraction 0, spongeTau 1, absorb 0, workgroupSize 128 and forceEvery 1.
   - `ForceSample3 { step: number; fx: number; fy: number; fz: number }`.
@@ -257,6 +261,7 @@ Commits: approved
       - `resetForces()`
       - `destroy()`
   - `initGpu(opts?: { f16?: boolean }): Promise<Gpu & { f16: boolean }>`.
+  - `solver3d.ts` re-exports `fitsLimits`, `PRESETS3` and `Precision` from `./shaders/common3d`.
 - **Context**: imitate `src/solver.ts` in full, including the `forceGeneration` guard and `rebuildFlags` encoding macro before flags. Imitate `src/solver.test.ts` for the fake device.
 - **Behavior**:
   - `create`:
@@ -271,7 +276,7 @@ Commits: approved
        - history (`HISTORY3_LEN` · 16);
        - histState (4 B).
     3. It pops both scopes. On an error from either, it destroys every buffer it allocated and throws `Error('Solver3D allocation failed: <message>')`.
-    4. Only then does it build the pipelines and run `rebuildFlags`.
+    4. Only then does it build the pipelines and run `rebuildFlags`. If either throws, it destroys every buffer it allocated and rethrows the original error unchanged, so only allocation errors carry the `Solver3D allocation failed` prefix.
   - `writeParams` fills `Params3`:
     - `spongeStart = spongeFraction > 0 ? (W − 1)·(1 − spongeFraction) : 1e9`;
     - `tauSponge = max(spongeTau, tau)`;
@@ -286,6 +291,7 @@ Commits: approved
 - **Tests** (`src/solver3d.test.ts`), using a fake device extended with `features`, `pushErrorScope`/`popErrorScope`, `createShaderModule`, `createComputePipelineAsync` (whose `getBindGroupLayout` returns a stub), `createBindGroup` and `beginComputePass` stubs:
   - `fp16 without the feature throws before allocating`: rejects with the message above and creates zero buffers. Checking the feature after allocation fails it.
   - `allocation error destroys everything`: `popErrorScope` returns an error for `'out-of-memory'`; `create` rejects with `Solver3D allocation failed`, and every buffer it created had `destroy()` called. Leaking one buffer fails it.
+  - `pipeline error destroys everything and keeps its message`: `createComputePipelineAsync` rejects with `Error('bad wgsl')`; `create` rejects with exactly that message (no allocation prefix), and every created buffer had `destroy()` called. A leak, or wrapping the message as an allocation failure, fails it.
   - `params layout`: after `create` with W, H, D = 8, 6, 4, tau 0.6, uIn 0, spongeFraction 0.15, the params buffer holds W, H, D, N as u32 at offsets 0–12, tau at f32 index 8, and spongeStart = 7·0.85 at f32 index 12. After `setInlet(0.05)`, index 11 reads 0.05. A field written to the wrong offset fails it.
   - `buffer sizes`: fp16 f buffers are 19·2·N bytes and fp32 ones are 19·4·N, and cellForce is 16·N. Sizing cellForce from a slot estimate fails it.
   - `readForces discards a read overtaken by resetForces`: ported from `src/solver.test.ts` for vec4 samples.
@@ -297,7 +303,7 @@ Commits: approved
 - **Interfaces produced**:
   - `CaseResult.skipped?: string`.
   - `runCase(device, key, log)` resolves `key` in `{ ...CASES, ...CASES3D }` and returns `pass: !r.skipped && r.metrics.every((m) => m.pass)`.
-  - `CASES3D` is imported from `./cases3d`. Task 8 creates that module; for this task, create `src/cases3d.ts` exporting `CASES3D: Record<string, Case> = {}` and export the `Case` type from `cases.ts`.
+  - `CASES3D` is imported from `./cases3d`. Task 8 creates that module; for this task, create `src/cases3d.ts` exporting `CASES3D: Record<string, Case> = {}`, and export the `Case` type and `function metric` from `cases.ts`.
 - **Context**: `src/cases.ts:437-442` and `src/validate.ts`. `cases3d.ts` imports `metric` and the types from `cases.ts`, and `cases.ts` imports `CASES3D` from `cases3d.ts`. That cycle is safe because neither module reads the other's bindings while it evaluates: `CASES3D` is only read inside `runCase`, and `metric` only inside a case.
 - **Behavior**:
   - `validate.ts`:
@@ -305,7 +311,7 @@ Commits: approved
     - `window.caseNames = [...Object.keys(CASES), ...Object.keys(CASES3D)]`, and the "all" button iterates `caseNames`.
     - `formatResult` prints `SKIP  <name>: <reason>` on its first line when `skipped` is set, followed by any notes.
   - `tests/validate.spec.ts`: the default list gains `'sphereFp16'`. After `runCase`, a result with `skipped` calls `test.skip(true, r.skipped)` before the pass assertion.
-- **Tests** (`src/cases.test.ts`):
+- **Tests** (`src/cases.test.ts`). `cases.ts` imports `solver.ts`, which reads `GPUBufferUsage` at load, so the test first stubs `globalThis.GPUBufferUsage` and `GPUMapMode` and then loads `./cases` and `./cases3d` with dynamic `import()`, exactly as `src/solver.test.ts:2-3` does:
   - `a skipped case never passes`: register a temporary key in `CASES3D` whose case returns `{ name: 'x', metrics: [], skipped: 'reason', steps: 0, cells: 0, notes: [] }`. `runCase` then returns `pass === false` and `skipped === 'reason'`. The old `[].every()` rule fails it.
   - `a case with passing metrics and no skip passes`: guards against inverting the rule.
 - **Command**: `npm test -- cases`. The GPU harness is exercised in Task 8.
@@ -322,9 +328,9 @@ Commits: approved
   1. W, H, D = `PRESETS3.medium`. The sphere has diameter 16 at (W/4, H/2, D/2). u_target = 0.1, and τ = `deriveTau(100, 0.1, 16).tau` (0.548). The config sets spongeFraction 0.15, spongeTau 1, absorb 0.02 and forceEvery 4.
   2. If `!device.features.has('shader-f16')`, return `skipped: 'shader-f16 not available on this device'` without running.
   3. For precision in [`'fp32'`, `'fp16'`]:
-     1. Create the solver. On an error, destroy anything created and return `skipped: <error message>`.
+     1. Create the solver. If `create` rejects with a message starting `Solver3D allocation failed`, destroy the other precision's solver if one is live and return `skipped: <error message>`. Any other error propagates, so the case fails; a shader or pipeline bug must never read as a skip.
      2. Call `setSdf`, then `initField`.
-     3. Advance in chunks of 400 steps, calling `setInlet(0.1 · smoothstep(min(1, step/3000)))` before each chunk and collecting `readForces()`.
+     3. Advance in chunks of 400 steps, calling `setInlet(0.1 · smoothstep(min(1, step/3000)))` before each chunk and collecting `readForces()`. Log `step <n>, <MLUPS> MLUPS` at most every 10 s, as `runRamped` does.
      4. Every 2,000 steps, which is one block, compute the block's C_D = mean(fx over the block) · 2/(0.1² · π·16²/4) and log `check k/15 C_D=<value>` through the case's log.
      5. Stop after block k when k ≥ 5 and |C_D,k − C_D,k−1| / |C_D,k−1| < 1e-4, or when k = 15. If the stop came at k = 15 without convergence, add the note `<precision> reached 15 blocks without converging`.
      6. Record the last block's C_D and destroy the solver.
