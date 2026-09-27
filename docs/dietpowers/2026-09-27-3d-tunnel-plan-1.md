@@ -103,7 +103,7 @@ Commits: approved
   - `flag bits`: bits 1…18 are free, `FLAG_SOLID`, `FLAG_INLET` and `FLAG_OUTLET` don't overlap them or each other, and all bits sit below 2^32. An overlapping constant fails it.
 - **Command**: `npm test -- lattice3d`.
 
-### - [ ] Task 2: 3D SDF builders and reference areas
+### - [x] Task 2: 3D SDF builders and reference areas
 
 - **Files**: create `src/geometry3d.ts` and `src/geometry3d.test.ts`.
 - **Interfaces produced**:
@@ -139,6 +139,7 @@ Commits: approved
   - `wing tips are flat`: at cz ± (span/2 + 1), a node at the section's thickest point reads 1 ± 0.05. Inside the span, the same x-y point is negative.
   - `referenceArea`: the five values above for size = 16 and D = 96, for example sphere 201.06 ± 0.01. Passing a fraction of H instead of cells is a caller bug that this test doesn't catch; `sphereFp16` passes cells.
 - **Command**: `npm test -- geometry3d`.
+- Departure: `wing pivots about mid-chord` checks the interior nodes at z = cz instead of trilinear samples 1.5 cells inside each end. A NACA0012 is about 0.2 cells thick 1.5 cells from its trailing edge, so trilinear sampling reads a correct build as outside. The test now requires the centre sample to be negative, the interior nodes' extent along d to lie within [−chord/2, −chord/2 + 1.5] and [chord/2 − 3, chord/2], and every interior node to lie within 0.06·chord + 1 of the chord line. A mutation check confirmed that a wrong sine sign and a leading-edge pivot both fail it.
 
 ### - [ ] Task 3: Params3, the storage codec and fitsLimits
 
