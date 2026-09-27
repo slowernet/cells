@@ -33,6 +33,8 @@ Long cases log a timestamped line after each convergence check (`check k/max`, a
 - `src/solver.ts`: buffers, pipelines, stepping, readbacks.
 - `src/render.ts`: field views and GPU tracers; its WGSL lives in `src/shaders/render.ts`.
 - `src/chart.ts`: the C_D/C_L chart.
+- `src/app.css`: the layout both pages share. The canvas fills the viewport, with a slide-in menu panel, a toolbar and a readout box over it. Overlays never use `backdrop-filter`, the panel animates only `transform`, and a closed panel is `content-visibility: hidden`.
+- `src/menu.ts`: the menu toggle, Escape and focus handling, and `isShown`, which tells whether the chart is visible. `src/icons.ts`: inline Lucide icons, with their licence notices.
 - `src/app.ts`: the UI.
 - `src/cases.ts`: validation cases.
 - `src/bench.ts`: the benchmark.
@@ -54,7 +56,7 @@ Long cases log a timestamped line after each convergence check (`check k/max`, a
   - `src/camera3d.ts`: the orbit camera.
   - `src/view3d.ts`: the View3 uniform and tracer helpers.
   - `src/tunnel3d.ts`: page logic, including presets, obstacle bodies and the step tuner.
-- `tests/`: the Playwright specs `validate.spec.ts`, `bench.spec.ts` and `tunnel3d.spec.ts`, and `progress.ts` for the progress log.
+- `tests/`: the Playwright specs `validate.spec.ts`, `bench.spec.ts`, `tunnel3d.spec.ts` and `menu.spec.ts` (both pages, desktop and phone viewports), and `progress.ts` for the progress log.
 - Unit tests sit next to their modules as `src/**/*.test.ts`. Tests of modules that import a solver stub `GPUBufferUsage` first and import dynamically, as `src/solver.test.ts` does.
 
 ## Solver conventions
