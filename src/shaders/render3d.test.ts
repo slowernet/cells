@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest';
-import { VIEW3_WGSL, outlineShader, obstacleShader, sliceShader, tracerLineShader } from './render3d';
-import { VIEW3_BYTES, VIEW3_OFFSETS } from '../view3d';
+import { VIEW3_WGSL, outlineShader, obstacleShader, sliceShader, tracerLineShader, advectShader } from './render3d';
+import { VIEW3_BYTES, VIEW3_OFFSETS, SUBSTEP_TRAVEL } from '../view3d';
 
 const modules = () => [outlineShader(), obstacleShader(), sliceShader(), tracerLineShader()];
 
@@ -51,4 +51,9 @@ test('line module binds particles read-only', () => {
   expect(code).toMatch(/@binding\(4\) var<storage, read> particles/);
   expect(code).toContain('@binding(1)');
   expect(code).not.toContain('@binding(0)');
+});
+
+test('advect sub-steps use the shared threshold', () => {
+  // The same rule as tracerSubsteps: split only when a frame moves more than SUBSTEP_TRAVEL cells.
+  expect(advectShader()).toContain(`travel > ${SUBSTEP_TRAVEL.toFixed(1)}`);
 });

@@ -80,8 +80,11 @@ export function rakeSeeds(W: number, H: number, D: number): Float32Array {
   return s;
 }
 
-/** Sub-steps for one frame of tracer advection: one unless the frame moves more than 2 cells at uTarget. */
+/** A frame's tracer travel (cells at uTarget) above which advection is split into sub-steps of at most one cell. */
+export const SUBSTEP_TRAVEL = 2;
+
+/** Sub-steps for one frame of tracer advection; the advect shader applies the same rule. */
 export function tracerSubsteps(uTarget: number, steps: number): number {
   const travel = uTarget * steps;
-  return travel > 2 ? Math.ceil(travel) : 1;
+  return travel > SUBSTEP_TRAVEL ? Math.ceil(travel) : 1;
 }

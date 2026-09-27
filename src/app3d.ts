@@ -98,7 +98,7 @@ function applyPhysics() {
   $('csOut').textContent = s.cs.toFixed(3);
   $('tauNote').textContent = `τ = ${tau.toFixed(4)}, ν = ${((tau - 0.5) / 3).toExponential(2)}, Mach ${mach.toFixed(2)}, L = ${state.lRef.toFixed(1)} cells`;
   const notes: string[] = [];
-  if (clamped)
+  if (clamped && state.area > 0)
     notes.push(`Re ${s.re} needs τ below 0.51, which is unstable. Running at Re ${effectiveRe.toFixed(0)}; enlarge the body or the grid for more (max ${maxReynolds(U_TARGET, state.lRef).toFixed(0)} at this size).`);
   if (s.smag) notes.push('Smagorinsky here stabilizes coarse grids; the grid is far too coarse to resolve turbulence.');
   note('reNote', notes.join(' '));
@@ -135,7 +135,8 @@ function resetFlow() {
 
 let rebuildToken = 0;
 
-async function rebuild() {
+/** Rebuilds the solver; the grid note shows the caller's note plus any allocation fallbacks, or nothing. */
+async function rebuild(callerNote = '') {
   const token = ++rebuildToken;
   const s = settings();
   state.solver?.destroy();
@@ -165,7 +166,7 @@ async function rebuild() {
     return;
   }
   select('grid').value = grid!;
-  note('gridNote', failures.join(' '));
+  note('gridNote', [callerNote, ...failures].filter(Boolean).join(' '));
   state.solver = solver;
   state.camera = new OrbitCamera([(solver.W - 1) / 2, (solver.H - 1) / 2, (solver.D - 1) / 2], 1.6 * solver.W);
   renderer.attach(solver);
@@ -210,16 +211,17 @@ canvas.addEventListener(
   { passive: false },
 );
 
-select('grid').addEventListener('change', () => void rebuild());
+select('grid').addEventListener('change', () => void rebuild(f16Note));
 select('precision').addEventListener('change', () => {
   const s = settings();
   refreshPresets(s.precision);
   const grid = fallbackPreset(s.grid, s.precision, device.limits);
+  let fallback = '';
   if (grid && grid !== s.grid) {
     select('grid').value = grid;
-    note('gridNote', `Grid ${s.grid} doesn't fit at ${s.precision.toUpperCase()}; using ${grid}.`);
-  } else note('gridNote', '');
-  void rebuild();
+    fallback = `Grid ${s.grid} doesn't fit at ${s.precision.toUpperCase()}; using ${grid}.`;
+  }
+  void rebuild([f16Note, fallback].filter(Boolean).join(' '));
 });
 select('obstacle').addEventListener('change', resetBody);
 for (const id of ['size', 'angle']) input(id).addEventListener('input', resetBody);
@@ -269,7 +271,8 @@ function frame(now: number) {
   const frameMs = now - lastFrameTime;
   lastFrameTime = now;
   state.frames++;
-  tuneSteps(frameMs);
+  // Paused frames measure nothing; tuning on a stale cost would drift toward MAX_SPF.
+  if (!state.paused) tuneSteps(frameMs);
   const n = state.paused ? 0 : state.spf;
 
   const t = Math.min(1, (solver.step - state.rampFrom) / RAMP_STEPS);
@@ -325,11 +328,12 @@ function frame(now: number) {
     $('mlups').textContent = `${n} steps/frame (no GPU timer)`;
   }
 
-  if (!forcesInFlight && state.frames % 6 === 0 && state.area > 0) {
+  // Read even without a body: readForces is what trims the solver's pending sample list.
+  if (!forcesInFlight && state.frames % 6 === 0) {
     forcesInFlight = true;
     const scale = coefficientScale(U_TARGET, state.area);
     solver.readForces().then((samples) => {
-      if (solver === state.solver) for (const f of samples) chart.push(f.step, f.fx * scale, f.fy * scale);
+      if (solver === state.solver && scale > 0) for (const f of samples) chart.push(f.step, f.fx * scale, f.fy * scale);
       forcesInFlight = false;
       updateStats();
     });
@@ -349,11 +353,11 @@ function frame(now: number) {
 }
 
 refreshPresets(select('precision').value as Precision);
+const f16Note = gpu.f16 ? '' : "FP16 isn't available on this device.";
 if (!gpu.f16) {
   const fp16 = select('precision').options[0];
   fp16.disabled = true;
   select('precision').value = 'fp32';
-  note('gridNote', "FP16 isn't available on this device.");
   refreshPresets('fp32');
 }
 {
@@ -370,10 +374,11 @@ const hook = {
     return cd.length ? mean(cd.slice(Math.floor(cd.length / 2))) : NaN;
   },
   stepsPerSecond: () => state.rate.value,
+  stepsPerFrame: () => state.spf,
   pixelCount: () => renderer.requestPixelCount(),
 };
 (window as unknown as { tunnel3d: typeof hook }).tunnel3d = hook;
 
 layout();
-await rebuild();
+await rebuild(f16Note);
 requestAnimationFrame(frame);

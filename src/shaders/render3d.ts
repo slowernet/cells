@@ -1,5 +1,6 @@
 import { PARAMS3_WGSL } from './common3d';
 import { COLOR_WGSL } from './render';
+import { SUBSTEP_TRAVEL } from '../view3d';
 
 /** Field order and types must match VIEW3_OFFSETS in view3d.ts. */
 export const VIEW3_WGSL = /* wgsl */ `
@@ -202,7 +203,7 @@ fn advect(@builtin(global_invocation_id) g: vec3u) {
   var p = particles[2u * i].xyz;
   // Midpoint rule over the lattice steps taken this frame, split so no sub-step moves more than a cell.
   let travel = V.uRef * V.steps;
-  let n = select(1u, u32(ceil(travel)), travel > 2.0);
+  let n = select(1u, u32(ceil(travel)), travel > ${SUBSTEP_TRAVEL.toFixed(1)});
   let h = V.steps / f32(n);
   for (var k = 0u; k < n; k++) {
     let v1 = velocity(p);
