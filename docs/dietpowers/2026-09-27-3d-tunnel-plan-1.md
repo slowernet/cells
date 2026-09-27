@@ -321,7 +321,7 @@ Commits: approved
   - `a case with passing metrics and no skip passes`: guards against inverting the rule.
 - **Command**: `npm test -- cases`. The GPU harness is exercised in Task 8.
 
-### - [ ] Task 8: The sphereFp16 case
+### - [x] Task 8: The sphereFp16 case
 
 - **Files**: modify `src/cases3d.ts`.
 - **Interfaces produced**: `CASES3D.sphereFp16: Case`.
