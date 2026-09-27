@@ -79,7 +79,7 @@ Commits: approved
 
 ## Tasks
 
-### - [ ] Task 1: D3Q19 lattice constants
+### - [x] Task 1: D3Q19 lattice constants
 
 - **Files**: create `src/lattice3d.ts` and `src/lattice3d.test.ts`.
 - **Interfaces produced**:
