@@ -1,6 +1,6 @@
 # 3D wind tunnel, plan 2: the 3D page
 
-Spec: docs/dietpowers/2026-09-27-3d-tunnel-spec.md @ e94bba3
+Spec: docs/dietpowers/2026-09-27-3d-tunnel-spec.md @ e94bba3 (Tasks 7-8 follow the 2026-09-27 overlay-menu change; see the spec's Changed notes)
 Base: main (plan 1 is in origin/main at a71677c; local main may lag, so fetch before diffing)
 Branch: feature/3d-wind-tunnel, as the partner chose; it already contains plan 1
 Commits: approved
@@ -276,3 +276,50 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 - **Tests**: both of the above.
 - **Command**: `npx playwright test tests/tunnel3d.spec.ts`, then `THROUGHPUT=1 npx playwright test tests/tunnel3d.spec.ts` with the GPU idle, then the full `npm run test:gpu`.
 - **AGENTS.md**: under Commands, `npm run test:gpu` runs every spec in `tests/`: the validation cases (filtered by `CASES`), the 2D benchmark and the 3D page smoke test. `THROUGHPUT=1 npx playwright test tests/tunnel3d.spec.ts` checks the page's steps/s criterion and needs the GPU otherwise idle.
+
+### - [ ] Task 7: Icons and the overlay layout CSS
+
+- **Files**: create `src/icons.ts` and `src/icons.test.ts`; rewrite `src/app.css`.
+- **Interfaces produced**:
+  - `icon(name: IconName, size = 18): string` returns an inline `<svg>` string using Lucide's 24×24 viewBox, `stroke="currentColor"`, `stroke-width="2"`, round caps and joins, and `aria-hidden="true"`.
+  - `IconName` covers: `menu`, `x`, `play`, `pause`, `rotate-ccw`, `pencil`, `eraser`, `crosshair`, `box`, `shapes`, `wind`, `eye`, `gauge`, `chart-line`, `link` and `chevron-down`.
+  - The file header carries Lucide's ISC licence notice.
+  - `src/app.css` classes, shared by both pages:
+    - `#view`: the canvas;
+    - `.menu-button`;
+    - `#panel` plus the `.open` state;
+    - `.group`: a `<details>` whose `<summary>` holds an icon, a title and the chevron;
+    - `.toolbar`;
+    - `.hud`.
+- **Behavior**: the CSS implements the spec's page layout:
+  - the canvas is fixed, full viewport, with `touch-action: none`;
+  - the panel is fixed at the left, `min(360px, 100vw)` wide and `100dvh` tall, with `overflow-y: auto`, `overscroll-behavior: contain`, `touch-action: pan-y`, `contain: layout paint style` and safe-area padding;
+  - when closed, the panel has `transform: translateX(-100%)`, `visibility: hidden` and `content-visibility: hidden`;
+  - only `transform` transitions, so the closed panel stays out of rendering and hit-testing;
+  - the toolbar and readout box are fixed overlays with solid rgba backgrounds and no `backdrop-filter`, and the readout values use `font-variant-numeric: tabular-nums` with fixed min-widths;
+  - `prefers-reduced-motion` removes the transition.
+- **Tests** (`src/icons.test.ts`):
+  - `every icon renders an svg`: each name returns markup with `viewBox="0 0 24 24"`, `stroke="currentColor"` and `aria-hidden="true"`.
+  - `no backdrop-filter over the canvas`: `src/app.css`, read with `node:fs`, contains no `backdrop-filter`.
+- **Command**: `npm test -- icons`.
+
+### - [ ] Task 8: Both pages on the overlay layout
+
+- **Files**: modify `index.html`, `3d.html`, `src/app.ts` and `src/app3d.ts`; create `src/menu.ts` and `tests/menu.spec.ts`.
+- **Interfaces produced**:
+  - `initMenu(): void`, in `src/menu.ts`. It fills every `[data-icon]` element with `icon(name)`, and wires `.menu-button` to toggle `#panel.open`, `aria-expanded` and the button icon. Escape closes the panel. Opening moves focus into the panel, and closing returns focus to the button.
+  - Both pages keep every control id, and gain `.menu-button`, `.toolbar` and `.hud`.
+  - `app3d.ts` and `app.ts` size the canvas from a `ResizeObserver`, using `devicePixelContentBoxSize` when it exists and `contentBoxSize × devicePixelRatio` otherwise. The 2D page letterboxes the canvas to the grid's aspect ratio inside the viewport.
+- **Behavior**:
+  - The menu groups follow the spec's table. The Forces group holds the chart.
+  - The readout box holds C_D, C_L, steps/s and MLUPS, plus Strouhal on the 2D page. The 3D page hides C_D and C_L when the obstacle is `none`.
+  - The toolbar holds the play/pause button (`#pause`, which swaps the `play` and `pause` icons) and `#resetFlow`. The 2D page's toolbar adds the draw, erase and probe radio buttons and the brush size.
+- **Tests** (`tests/menu.spec.ts`): for each of `/index.html` and `/3d.html`, at a 1400×800 viewport and at a 390×844 viewport with touch:
+  - `menu opens, closes and scrolls`:
+    1. Record the canvas's pixel width and height.
+    2. Click `.menu-button` and assert `#panel` is visible.
+    3. Assert `#panel`'s `scrollHeight` exceeds its `clientHeight` (all groups are opened first on the desktop viewport, so the content is tall enough), then scroll the panel and assert `scrollTop > 0`.
+    4. Press Escape and assert the panel is hidden.
+    5. Assert the canvas's pixel size is unchanged.
+  - `controls still work`: open the menu, change `#obstacle`, and assert the page's readouts still update, meaning the step count increases.
+- **Command**: `npx playwright test tests/menu.spec.ts tests/tunnel3d.spec.ts`, then a visual check with `.dietpowers/page-check.mjs` on both pages at both viewports.
