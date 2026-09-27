@@ -92,7 +92,7 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
   - force reduction of `cellForce` into a vec3 history ring, as in 2D.
 - `src/solver3d.ts`:
   - `Solver3D.create(device, cfg: Solver3DConfig): Promise<Solver3D>`, where `Solver3DConfig` holds the grid W, H and D, `precision`, `tau`, `smagorinsky`, `uIn`, `spongeFraction`, `spongeTau`, `absorb`, `workgroupSize` and `forceEvery`.
-  - Methods: `setSdf(Float32Array)`, `initField()`, `setTau(tau)`, `setInlet(u)`, `encodeSteps(pass, n)`, `encodeMacro(pass)`, `readForces(): Promise<ForceSample3[]>` (`{ step, fx, fy, fz }`), `readMacro()`, `run(n)` for tests, and `destroy()`.
+  - Methods: `setSdf(Float32Array)`, `initField()`, `setTau(tau)`, `setSmagorinsky(cs)`, `setInlet(u)`, `encodeSteps(pass, n)`, `encodeMacro(pass)`, `readForces(): Promise<ForceSample3[]>` (`{ step, fx, fy, fz }`), `readMacro()`, `run(n)` for tests, and `destroy()`.
   - It exposes the `macro`, `sdf` and `flags` buffers to the renderer.
   - `fitsLimits(W, H, D, precision, limits): boolean` is exported pure.
   - `cellForce` holds N entries (16·N bytes), as the 2D solver sizes it per cell, so the slot count can't overflow it.
@@ -100,7 +100,9 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
   - Change handling, as the 2D app does:
     - obstacle, size and angle changes call `setSdf`, re-derive τ from the new reference length, and clear the force history and chart, as `resetBody` does (`src/app.ts:256-264`); the flow continues;
     - Re changes call `setTau` only;
+    - Smagorinsky changes call `setSmagorinsky` only;
     - grid and precision changes rebuild the solver: the app destroys the old solver before creating the new one, and holds a rebuild token so that a rebuild overtaken by a later one destroys its own solver and returns (`src/app.ts:138-173`).
+  > **Changed 2026-09-27:** `Solver3D` gains `setSmagorinsky(cs)`, and Smagorinsky changes call it only (from no runtime path for the Smagorinsky input to a setter like `setTau`). Why: the page's Smagorinsky control needs a way to change C_s without a rebuild, which plan 1's interface lacked. Approved by the partner in the plan 2 review, finding 8.
 - `src/gpu.ts` (changed): `initGpu(opts?: { f16?: boolean })`. With `f16: true`, it adds `'shader-f16'` to `requiredFeatures` when `adapter.features` has it. It returns `f16: boolean`, which says whether the device has the feature. `app.ts` passes nothing and behaves exactly as today. `validate.ts`, `bench.ts` and `app3d.ts` pass `{ f16: true }`.
 - `src/geometry3d.ts`: SDF builders on a W×H×D `Float32Array`, in cells and negative inside, with nodes at integer coordinates. They stamp true distances within a margin of the body and `FAR` elsewhere, as `geometry.ts` does. Union is `min`.
   - `emptySdf3(W, H, D)`
