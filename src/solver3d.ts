@@ -1,7 +1,7 @@
 import { MAGIC_LAMBDA } from './lattice';
 import { Q3 } from './lattice3d';
 import { FAR } from './geometry';
-import { PARAMS3_BYTES, Precision, bytesPerPopulation } from './shaders/common3d';
+import { PARAMS3_BYTES, Precision, bytesPerPopulation, fitsLimits } from './shaders/common3d';
 import { step3dShader } from './shaders/step3d';
 import { flags3dShader, init3dShader, macro3dShader, reduce3dShader, HISTORY3_LEN } from './shaders/aux3d';
 import { readBuffer } from './gpu';
@@ -78,10 +78,16 @@ export class Solver3D {
   /** Throws 'Solver3D allocation failed: ...' when the buffers don't fit; any other error is rethrown unchanged. */
   static async create(device: GPUDevice, config: Solver3DConfig): Promise<Solver3D> {
     if (config.precision === 'fp16' && !device.features.has('shader-f16')) throw new Error('shader-f16 is not available on this device');
+    const { width: W, height: H, depth: D, precision } = config;
+    // A buffer over the binding limit still allocates; only the later bind group fails, outside the error scopes.
+    if (!fitsLimits(W, H, D, precision, device.limits)) {
+      const bytes = Q3 * bytesPerPopulation(precision) * W * H * D;
+      throw new Error(`Solver3D allocation failed: one distribution buffer needs ${bytes} bytes; this device allows ${device.limits.maxStorageBufferBindingSize} per storage binding and ${device.limits.maxBufferSize} per buffer`);
+    }
     device.pushErrorScope('out-of-memory');
     device.pushErrorScope('validation');
     const s = new Solver3D(device, config);
-    const [validation, oom] = [await device.popErrorScope(), await device.popErrorScope()];
+    const [validation, oom] = await Promise.all([device.popErrorScope(), device.popErrorScope()]);
     const err = oom ?? validation;
     if (err) {
       s.destroy();

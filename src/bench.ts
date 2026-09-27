@@ -144,11 +144,19 @@ async function bench3D(device: GPUDevice, timestamps: boolean, f16: boolean, log
   const steps = Math.max(100, Math.round(4e8 / N));
   const rows: BenchRow[] = [];
   const precisions: Precision[] = f16 ? ['fp32', 'fp16'] : ['fp32'];
-  for (const precision of precisions)
+  precisionLoop: for (const precision of precisions)
     for (const body of [false, true])
       for (const wg of [64, 128, 256]) {
         const forceEvery = body ? 4 : 0;
-        const s = await Solver3D.create(device, { width: W, height: H, depth: D, precision, tau: 0.56, uIn: 0.1, spongeFraction: 0.15, absorb: 0.02, workgroupSize: wg, forceEvery });
+        let s: Solver3D;
+        try {
+          s = await Solver3D.create(device, { width: W, height: H, depth: D, precision, tau: 0.56, uIn: 0.1, spongeFraction: 0.15, absorb: 0.02, workgroupSize: wg, forceEvery });
+        } catch (e) {
+          const msg = (e as Error).message;
+          if (!msg.startsWith('Solver3D allocation failed')) throw e;
+          log(`d3q19 ${precision} skipped: ${msg}`);
+          continue precisionLoop;
+        }
         if (body) {
           const sdf = emptySdf3(W, H, D);
           addSphere(sdf, W, H, D, W / 4, H / 2, D / 2, 8);
@@ -166,7 +174,8 @@ async function bench3D(device: GPUDevice, timestamps: boolean, f16: boolean, log
         s.destroy();
       }
   for (const precision of precisions) {
-    const r = rows.find((x) => x.scenario === `d3q19 empty ${precision}` && x.workgroup === 128)!;
+    const r = rows.find((x) => x.scenario === `d3q19 empty ${precision}` && x.workgroup === 128);
+    if (!r) continue;
     log(`d3q19 floor ${precision} (empty, wg 128): ${r.mlups.toFixed(0)} vs ${FLOOR_3D[precision]} MLUPS: ${r.mlups >= FLOOR_3D[precision] ? 'met' : 'missed'}`);
   }
   if (!f16) log('d3q19 fp16 rows skipped: shader-f16 not available on this device');

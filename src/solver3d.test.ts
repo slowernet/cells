@@ -6,6 +6,7 @@ interface FakeOpts {
   f16?: boolean;
   scopeError?: 'out-of-memory' | 'validation';
   pipelineError?: string;
+  maxBinding?: number;
 }
 
 // Just enough of GPUDevice for Solver3D: buffers are ArrayBuffers, copies run at submit, compute passes are no-ops.
@@ -16,7 +17,7 @@ function fakeDevice(opts: FakeOpts = {}) {
   const scopes: string[] = [];
   const pass = { setPipeline() {}, setBindGroup() {}, dispatchWorkgroups() {}, end() {} };
   const device: any = {
-    limits: { maxComputeWorkgroupsPerDimension: 65535 },
+    limits: { maxComputeWorkgroupsPerDimension: 65535, maxStorageBufferBindingSize: opts.maxBinding ?? 2 ** 31, maxBufferSize: 2 ** 32 },
     features: new Set(opts.f16 ? ['shader-f16'] : []),
     createBuffer({ size }: any) {
       const b: any = { size, destroyed: false, mapState: 'unmapped' };
@@ -82,6 +83,30 @@ test('allocation error destroys everything', async () => {
   await expect(Solver3D.create(device, { ...cfg, precision: 'fp32' })).rejects.toThrow(/^Solver3D allocation failed: fake out-of-memory/);
   expect(created.length).toBeGreaterThan(0);
   expect(created.every((b) => b.destroyed)).toBe(true);
+});
+
+test('a buffer over the binding limit fails as an allocation error before allocating', async () => {
+  const { Solver3D } = await import('./solver3d');
+  const N = 8 * 6 * 4;
+  const { device, created } = fakeDevice({ maxBinding: 19 * 4 * N - 1 });
+  const err = (await Solver3D.create(device, { ...cfg, precision: 'fp32' }).catch((e: Error) => e)) as Error;
+  expect(err.message).toBe(`Solver3D allocation failed: one distribution buffer needs ${19 * 4 * N} bytes; this device allows ${19 * 4 * N - 1} per storage binding and ${2 ** 32} per buffer`);
+  expect(created).toHaveLength(0);
+});
+
+test('error scopes are popped together', async () => {
+  const { Solver3D } = await import('./solver3d');
+  const { device } = fakeDevice();
+  const pops: number[] = [];
+  let pending = 0;
+  const pop = device.popErrorScope;
+  device.popErrorScope = () => {
+    pops.push(pending++);
+    return pop().then((r: unknown) => (pending--, r));
+  };
+  await Solver3D.create(device, { ...cfg, precision: 'fp32' });
+  // Both pops are issued before either resolves, so the second sees the first still pending.
+  expect(pops).toEqual([0, 1]);
 });
 
 test('pipeline error destroys everything and keeps its message', async () => {
