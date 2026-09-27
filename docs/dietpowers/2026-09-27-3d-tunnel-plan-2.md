@@ -79,7 +79,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 
 ## Tasks
 
-### - [ ] Task 1: Orbit camera
+### - [x] Task 1: Orbit camera
 
 - **Files**: create `src/camera3d.ts` and `src/camera3d.test.ts`.
 - **Interfaces produced**:
