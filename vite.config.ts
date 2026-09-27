@@ -7,7 +7,7 @@ export default defineConfig({
   build: {
     target: 'es2022',
     rolldownOptions: {
-      input: { main: 'index.html', bench: 'bench.html', validate: 'validate.html' },
+      input: { main: 'index.html', bench: 'bench.html', validate: 'validate.html', tunnel3d: '3d.html' },
     },
   },
   test: { include: ['src/**/*.test.ts'] },

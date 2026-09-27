@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" href="data:," />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lattice Boltzmann wind tunnel · 3D</title>
+  <link rel="stylesheet" href="/src/app.css" />
+</head>
+<body>
+  <main id="stage">
+    <canvas id="view" aria-label="3D flow field; drag to orbit, scroll to zoom"></canvas>
+    <div id="nogpu" hidden></div>
+  </main>
+  <aside id="panel">
+    <h1>Wind tunnel 3D</h1>
+    <p class="sub">D3Q19 TRT lattice Boltzmann on WebGPU</p>
+
+    <section>
+      <label>Grid
+        <select id="grid">
+          <option value="low">128 × 64 × 64</option>
+          <option value="medium" selected>192 × 96 × 96</option>
+          <option value="high">256 × 128 × 128</option>
+        </select>
+      </label>
+      <label>Precision
+        <select id="precision">
+          <option value="fp16" selected>FP16 storage</option>
+          <option value="fp32">FP32 storage</option>
+        </select>
+      </label>
+      <p id="gridNote" class="note" hidden></p>
+      <label>Obstacle
+        <select id="obstacle">
+          <option value="sphere" selected>Sphere</option>
+          <option value="cube">Cube</option>
+          <option value="cylinder">Cylinder (spanwise)</option>
+          <option value="wing">Wing (NACA 0012)</option>
+          <option value="none">None</option>
+        </select>
+      </label>
+      <label><span>Size <output id="sizeOut"></output> cells</span>
+        <input id="size" type="range" min="0.05" max="0.4" step="0.01" value="0.2" />
+      </label>
+      <label><span>Angle <output id="angleOut"></output>°</span>
+        <input id="angle" type="range" min="-20" max="20" step="0.5" value="0" />
+      </label>
+    </section>
+
+    <section>
+      <label>Reynolds number
+        <input id="re" type="number" min="1" max="1000000" step="any" value="100" />
+      </label>
+      <label class="check"><input id="smag" type="checkbox" /> <span>Smagorinsky stabilizer, C<sub>s</sub> <output id="csOut"></output></span></label>
+      <input id="cs" type="range" min="0.1" max="0.17" step="0.005" value="0.16" />
+      <p id="tauNote" class="note"></p>
+      <p id="reNote" class="note warn" hidden></p>
+    </section>
+
+    <section>
+      <label>View
+        <select id="viewMode">
+          <option value="0" selected>Speed</option>
+          <option value="1">Vorticity magnitude</option>
+        </select>
+      </label>
+      <label>Slice axis
+        <select id="sliceAxis">
+          <option value="0">x (across the flow)</option>
+          <option value="1">y (horizontal)</option>
+          <option value="2" selected>z (vertical, along the flow)</option>
+        </select>
+      </label>
+      <label><span>Slice position</span>
+        <input id="slicePos" type="range" min="0" max="1" step="0.01" value="0.5" />
+      </label>
+      <label class="check"><input id="tracers" type="checkbox" checked /> <span>Tracers</span></label>
+      <div class="buttons">
+        <button id="pause">Pause</button>
+        <button id="resetFlow">Reset flow</button>
+      </div>
+    </section>
+
+    <section>
+      <dl id="stats">
+        <dt class="coef">C<sub>D</sub> mean</dt><dd id="cd" class="coef">–</dd>
+        <dt class="coef">C<sub>L</sub> mean</dt><dd id="cl" class="coef">–</dd>
+        <dt>Step</dt><dd id="step">0</dd>
+        <dt>Throughput</dt><dd id="mlups">–</dd>
+        <dt>Rate</dt><dd id="sps">–</dd>
+      </dl>
+      <div class="chart coef">
+        <canvas id="chart" aria-label="Drag and lift coefficient history"></canvas>
+        <div id="chartTip" class="tip" hidden></div>
+      </div>
+      <p class="note">Coefficients use the frontal reference area and the inlet speed. Drag to orbit, scroll to zoom. <a href="index.html">2D tunnel</a> · <a href="validate.html">Validation</a> · <a href="bench.html">Benchmark</a></p>
+    </section>
+  </aside>
+  <script type="module" src="/src/app3d.ts"></script>
+</body>
+</html>

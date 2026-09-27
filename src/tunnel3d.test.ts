@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest';
 import { FAR } from './geometry';
-import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale } from './tunnel3d';
+import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, nextStepsPerFrame } from './tunnel3d';
 
 const small = { maxStorageBufferBindingSize: 128 * 2 ** 20, maxBufferSize: 256 * 2 ** 20 };
 const tiny = { maxStorageBufferBindingSize: 2 ** 20, maxBufferSize: 2 ** 20 };
@@ -47,4 +47,15 @@ test('buildBody none', () => {
 test('coefficientScale', () => {
   expect(coefficientScale(0.1, 100)).toBeCloseTo(2, 12);
   expect(coefficientScale(0.1, 0)).toBe(0);
+});
+
+test('steps per frame can grow from small values', () => {
+  // round(3 * 1.1) is 3, so a pure multiplicative rule sticks at small values.
+  expect(nextStepsPerFrame(3, 2)).toBe(4);
+  expect(nextStepsPerFrame(1, 2)).toBe(2);
+  expect(nextStepsPerFrame(20, 2)).toBe(22);
+  expect(nextStepsPerFrame(20, 0.5)).toBe(16);
+  expect(nextStepsPerFrame(20, 1)).toBe(20);
+  expect(nextStepsPerFrame(400, 2)).toBe(400);
+  expect(nextStepsPerFrame(1, 0.1)).toBe(1);
 });

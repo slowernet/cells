@@ -74,3 +74,12 @@ export function buildBody(body: Body3, W: number, H: number, D: number) {
 export function coefficientScale(uTarget: number, area: number): number {
   return area > 0 ? 2 / (uTarget * uTarget * area) : 0;
 }
+
+export const MAX_SPF = 400;
+
+/** Scales steps per frame toward the frame budget by at most ×0.8..×1.1, always gaining a step when there is room. */
+export function nextStepsPerFrame(spf: number, budgetRatio: number): number {
+  let next = Math.round(spf * Math.min(1.1, Math.max(0.8, budgetRatio)));
+  if (budgetRatio > 1 && next <= spf) next = spf + 1;
+  return Math.min(MAX_SPF, Math.max(1, next));
+}

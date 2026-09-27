@@ -210,7 +210,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 - **Command**: `npm test -- view3d render3d`, then the shader compile check from Conventions for the advect and line modules.
 - Departure: the compile check ran through `.dietpowers/compile-check.mjs` again (see Task 3), for all five modules. None had errors.
 
-### - [ ] Task 5: The 3D page
+### - [x] Task 5: The 3D page
 
 - **Files**: create `3d.html` and `src/app3d.ts`; modify `vite.config.ts` (input `tunnel3d: '3d.html'`) and `index.html` (a "3D tunnel" link beside the Validation and Benchmark links). `3d.html`'s note line links back to the 2D tunnel (`index.html`), beside Validation and Benchmark.
 - **Interfaces produced**:
@@ -256,6 +256,8 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 
   Record anything that departs from this plan as a `Departure:` line.
 - **Command**: `npm run typecheck && npm test`, plus the manual check above.
+- Departure: the step tuner copied from `app.ts` sticks at small values. It scales `spf` by at most ×1.1 and then rounds, so `round(3 × 1.1) = 3`. After a slow frame the page sat at 3 steps per frame and 180 steps/s. The growth rule is now `nextStepsPerFrame` in `src/tunnel3d.ts`, which gains at least one step whenever the budget has room, with a unit test. With it, defaults run at about 575–600 steps/s on the M5 (about 10 steps per frame, about 1,200 MLUPS), with WindowServer holding about 22% of the GPU. The 2D `tuneSteps` has the same trap. It rarely bites there because 2D runs at 20 or more steps per frame, and it is left unchanged for a separate fix.
+- Departure: the visual check ran through `.dietpowers/page-check.mjs` and `.dietpowers/perf-check.mjs`, gitignored Playwright scripts against the dev server, because the chrome-devtools MCP browser was locked. They took screenshots of the sphere; the wing with the vorticity view on a y slice; the cylinder on the low grid in FP32, where a vortex street is visible; and `none`. Every run had no console errors or warnings.
 
 ### - [ ] Task 6: Page tests and docs
 
