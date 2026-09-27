@@ -25,12 +25,12 @@ test('pausing keeps steps per frame and none shows no Re warning', async ({ page
   await page.waitForFunction(() => (window as unknown as { tunnel3d?: { ready: boolean } }).tunnel3d?.ready === true, null, { timeout: 60_000 });
   await page.waitForTimeout(3000);
   const spf = () => page.evaluate(() => (window as unknown as { tunnel3d: { stepsPerFrame(): number } }).tunnel3d.stepsPerFrame());
+  await page.click('.menu-button');
   await page.click('#pause');
   const before = await spf();
   await page.waitForTimeout(3000);
   expect(await spf()).toBe(before);
   await page.click('#pause');
-  await page.click('.menu-button');
   await page.selectOption('#obstacle', 'none');
   await expect(page.locator('#reNote')).toBeHidden();
 });

@@ -284,7 +284,7 @@ const chartCanvas = $('chart');
 initMenu(() => chart.invalidate());
 watchCanvasSize((w, h) => renderer.resize(w, h));
 addEventListener('keydown', (e) => {
-  if (e.code === 'Space' && e.target === document.body) {
+  if (e.code === 'Space' && !(e.target as HTMLElement).closest('input, select, textarea, button, a, summary')) {
     e.preventDefault();
     $('pause').click();
   }

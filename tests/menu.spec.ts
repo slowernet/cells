@@ -28,20 +28,22 @@ for (const url of pages)
 
         const panel = page.locator('#panel');
         await expect(panel).toBeHidden();
+        const btn = (await page.locator('.menu-button').boundingBox())!;
+        expect(btn.x).toBeGreaterThan(vp.viewport.width / 2);
         await page.click('.menu-button');
         await expect(panel).toBeVisible();
         await expect(page.locator('.menu-button')).toHaveAttribute('aria-expanded', 'true');
         // Wait for the 180 ms slide-in to finish, so gestures land on the panel and not the canvas behind it.
-        await expect.poll(() => panel.evaluate((el) => el.getBoundingClientRect().left)).toBe(0);
+        await expect.poll(() => panel.evaluate((el) => Math.round(innerWidth - el.getBoundingClientRect().right))).toBe(0);
 
         // Open every group so the content is taller than the viewport, then scroll.
         await page.evaluate(() => document.querySelectorAll<HTMLDetailsElement>('#panel details').forEach((d) => (d.open = true)));
         const dims = await panel.evaluate((el) => [el.scrollHeight, el.clientHeight]);
         expect(dims[0]).toBeGreaterThan(dims[1]);
         if (vp.hasTouch) {
-          // A touch drag inside the panel, in CSS pixels of the 390x844 viewport.
+          // A touch drag inside the right-hand panel, in CSS pixels of the 390x844 viewport.
           const cdp = await page.context().newCDPSession(page);
-          await cdp.send('Input.synthesizeScrollGesture', { x: 180, y: 600, yDistance: -300, gestureSourceType: 'touch' });
+          await cdp.send('Input.synthesizeScrollGesture', { x: 220, y: 600, yDistance: -300, gestureSourceType: 'touch' });
         } else {
           await panel.hover();
           await page.mouse.wheel(0, 400);
@@ -52,6 +54,15 @@ for (const url of pages)
         await expect(panel).toBeHidden();
         await expect(page.locator('.menu-button')).toHaveAttribute('aria-expanded', 'false');
         expect(await canvasSize(page)).toEqual(before);
+      });
+
+      test('mode switch links to the other page', async ({ page }) => {
+        await page.goto(url);
+        await page.click('.menu-button');
+        const current = page.locator('.mode-switch [aria-current="page"]');
+        await expect(current).toHaveText(url === '/3d.html' ? '3D' : '2D');
+        const other = page.locator('.mode-switch a:not([aria-current])');
+        await expect(other).toHaveAttribute('href', url === '/3d.html' ? 'index.html' : '3d.html');
       });
 
       test('controls still work', async ({ page }) => {

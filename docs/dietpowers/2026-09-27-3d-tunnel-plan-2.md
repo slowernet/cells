@@ -329,7 +329,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 - Departure: the panel is opaque (`--surface-1`), not 94% translucent. The screenshots showed the readout box and toolbar showing through, and an opaque panel also skips blending over the canvas.
 - Checked: screenshots of both pages at 1400×800 and 390×844 (phone, 3× scale), with the menu open and closed, from `.dietpowers/layout-shots.mjs`. There were no console warnings or errors. There is one verbose-level Chrome message per load about rendering in a `content-visibility` subtree.
 
-### - [ ] Task 9: Menu at the top right, controls and stats in the panel header, 2D/3D switch
+### - [x] Task 9: Menu at the top right, controls and stats in the panel header, 2D/3D switch
 
 - **Files**: modify `index.html`, `3d.html`, `src/app.css`, `src/app3d.ts`, `tests/menu.spec.ts` and `tests/tunnel3d.spec.ts`.
 - **Behavior**, following the spec's second 2026-09-27 change:
@@ -342,3 +342,5 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
   - Every test that clicks `#pause` opens the menu first.
   - `menu opens, closes and scrolls` also checks that the menu button's box sits in the right half of the viewport.
 - **Command**: `npx playwright test tests/menu.spec.ts tests/tunnel3d.spec.ts`, then screenshots with `.dietpowers/layout-shots.mjs`.
+- Departure: when the menu opens, focus moves to the panel itself (`tabindex="-1"`) instead of its first control. Both pages ignore Space only when it targets a real control (input, select, textarea, button, link or summary), so Space pauses with the menu open or closed, as the spec says. Before this, the 2D page only paused when focus was on `<body>`.
+- Checked: all 14 page tests pass (menu on both pages at both viewports, the mode switch, controls, and the 3D smoke and pause tests), plus screenshots of both pages at desktop and phone sizes with no console warnings.

@@ -12,7 +12,7 @@ export function initMenu(onVisibility: () => void = () => {}) {
     button.setAttribute('aria-expanded', String(open));
     button.setAttribute('aria-label', open ? 'Close settings' : 'Open settings');
     glyph.innerHTML = icon(open ? 'x' : 'menu');
-    if (open) panel.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
+    if (open) panel.focus({ preventScroll: true });
     else if (panel.contains(document.activeElement)) button.focus();
     onVisibility();
   };

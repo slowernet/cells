@@ -235,6 +235,13 @@ $('pause').addEventListener('click', () => {
   $('pause').title = label;
 });
 $('resetFlow').addEventListener('click', resetFlow);
+addEventListener('keydown', (e) => {
+  const t = e.target as HTMLElement;
+  if (e.code === 'Space' && !t.closest('input, select, textarea, button, a, summary')) {
+    e.preventDefault();
+    $('pause').click();
+  }
+});
 
 // GPU timing: the compute pass is bracketed by timestamps, read back without stalling the frame loop.
 const querySet = gpu.timestamps ? device.createQuerySet({ type: 'timestamp', count: 2 }) : null;

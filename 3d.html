@@ -15,9 +15,27 @@
 
   <button class="menu-button" type="button" aria-controls="panel" aria-expanded="false" aria-label="Open settings"><span data-icon="menu"></span></button>
 
-  <aside id="panel" aria-label="Settings">
+  <aside id="panel" aria-label="Settings" tabindex="-1">
     <h1>Wind tunnel 3D</h1>
     <p class="sub">D3Q19 TRT lattice Boltzmann on WebGPU</p>
+
+    <nav class="mode-switch" aria-label="Tunnel mode">
+      <a href="index.html">2D</a>
+      <a href="3d.html" aria-current="page">3D</a>
+    </nav>
+
+    <div class="controls" role="toolbar" aria-label="Simulation">
+      <button id="pause" type="button" aria-label="Pause" title="Pause (Space)"><span data-icon="pause"></span></button>
+      <button id="resetFlow" type="button" aria-label="Reset flow" title="Reset flow"><span data-icon="rotate-ccw"></span></button>
+    </div>
+
+    <dl class="stats" id="stats">
+      <dt class="coef">C<sub>D</sub></dt><dd id="cd" class="coef">–</dd>
+      <dt class="coef">C<sub>L</sub></dt><dd id="cl" class="coef">–</dd>
+      <dt>Step</dt><dd id="step">0</dd>
+      <dt>Rate</dt><dd id="sps">–</dd>
+      <dt>GPU</dt><dd id="mlups">–</dd>
+    </dl>
 
     <details class="group" open>
       <summary><span data-icon="shapes"></span>Obstacle<span class="chev" data-icon="chevron-down"></span></summary>
@@ -110,25 +128,11 @@
     <details class="group">
       <summary><span data-icon="link"></span>Pages<span class="chev" data-icon="chevron-down"></span></summary>
       <div class="group-body links">
-        <a href="index.html">2D tunnel</a>
         <a href="validate.html">Validation suite</a>
         <a href="bench.html">MLUPS benchmark</a>
       </div>
     </details>
   </aside>
-
-  <div class="toolbar" role="toolbar" aria-label="Simulation">
-    <button id="pause" type="button" aria-label="Pause" title="Pause"><span data-icon="pause"></span></button>
-    <button id="resetFlow" type="button" aria-label="Reset flow" title="Reset flow"><span data-icon="rotate-ccw"></span></button>
-  </div>
-
-  <dl class="hud" id="stats" aria-live="off">
-    <dt class="coef">C<sub>D</sub></dt><dd id="cd" class="coef">–</dd>
-    <dt class="coef">C<sub>L</sub></dt><dd id="cl" class="coef">–</dd>
-    <dt>Step</dt><dd id="step">0</dd>
-    <dt>Rate</dt><dd id="sps">–</dd>
-    <dt>GPU</dt><dd id="mlups">–</dd>
-  </dl>
 
   <script type="module" src="/src/app3d.ts"></script>
 </body>
