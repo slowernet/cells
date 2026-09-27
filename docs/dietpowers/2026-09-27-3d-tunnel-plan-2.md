@@ -277,7 +277,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 - **Command**: `npx playwright test tests/tunnel3d.spec.ts`, then `THROUGHPUT=1 npx playwright test tests/tunnel3d.spec.ts` with the GPU idle, then the full `npm run test:gpu`.
 - **AGENTS.md**: under Commands, `npm run test:gpu` runs every spec in `tests/`: the validation cases (filtered by `CASES`), the 2D benchmark and the 3D page smoke test. `THROUGHPUT=1 npx playwright test tests/tunnel3d.spec.ts` checks the page's steps/s criterion and needs the GPU otherwise idle.
 
-### - [ ] Task 7: Icons and the overlay layout CSS
+### - [x] Task 7: Icons and the overlay layout CSS
 
 - **Files**: create `src/icons.ts` and `src/icons.test.ts`; rewrite `src/app.css`.
 - **Interfaces produced**:
