@@ -1,7 +1,8 @@
 # 3D wind tunnel, plan 2: the 3D page
 
-Spec: docs/dietpowers/2026-09-27-3d-tunnel-spec.md @ a14f298
-Base: main
+Spec: docs/dietpowers/2026-09-27-3d-tunnel-spec.md @ e94bba3
+Base: main (plan 1 is in origin/main at a71677c; local main may lag, so fetch before diffing)
+Branch: feature/3d-wind-tunnel, as the partner chose; it already contains plan 1
 Commits: approved
 
 **Goal:** build the interactive `3d.html` page on top of plan 1's `Solver3D`: an orbit view with a sphere-traced obstacle, a slice plane and rake tracers, the controls from the spec's Inputs table, the C_D/C_L chart, and MLUPS and steps-per-second readouts. It meets spec criteria 5 (at least 480 steps/s) and 6 (the smoke test).
@@ -72,7 +73,9 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 
 - **World space is lattice space**: node (x, y, z) sits at integer coordinates, the domain box is [−0.5, W − 0.5] × [−0.5, H − 0.5] × [−0.5, D − 0.5], x is the flow direction and y is up on screen.
 - **Macro reads**: trilinear velocity from `macro` clamps indices to the grid, and a sample is solid when the nearest node has `w == 0`.
-- **Tests**: unit tests in `src/*.test.ts` run with `npm test`. The page tests in `tests/tunnel3d.spec.ts` run with `npm run test:gpu` or `npx playwright test tests/tunnel3d.spec.ts`. `npm run typecheck` stays clean after every task. After Tasks 3 to 5, open `npm run dev` and look at `/3d.html` with the chrome-devtools MCP (screenshot and console) before committing.
+- **Tests**: unit tests in `src/*.test.ts` run with `npm test`. The page tests in `tests/tunnel3d.spec.ts` run with `npm run test:gpu` or `npx playwright test tests/tunnel3d.spec.ts`. `npm run typecheck` stays clean after every task.
+- **Shader compile check** (Tasks 3 and 4): with `npm run dev` running, use the chrome-devtools MCP to evaluate a script on any page that requests a device, imports `/src/shaders/render3d.ts`, calls `createShaderModule` for each generator's output and awaits `getCompilationInfo()`. Any message of type `error` fails the task.
+- **Visual check** (after Task 5): open `/3d.html` with the chrome-devtools MCP and take a screenshot, and check the console, before committing.
 
 ## Tasks
 
@@ -145,36 +148,37 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 - **Files**: create `src/view3d.ts`, `src/view3d.test.ts`, `src/shaders/render3d.ts`, `src/shaders/render3d.test.ts` and `src/render3d.ts`.
 - **Interfaces produced**:
   - `src/view3d.ts`:
-    - `VIEW3_BYTES = 176`.
-    - `interface View3 { viewProj: Mat4; invViewProj: Mat4; eye: Vec3; sliceAxis: 0 | 1 | 2; slicePos: number; mode: 0 | 1; uRef: number; boxMin: Vec3; boxMax: Vec3; hasBody: boolean; steps: number; count: number; frame: number }`. `mode` is 0 for speed and 1 for vorticity. `slicePos` runs from 0 to 1.
-    - `packView3(v: View3): ArrayBuffer`. The byte layout matches the WGSL struct: viewProj at 0, invViewProj at 64, eye (vec3f) at 128, sliceAxis (u32) at 140, boxMin at 144, slicePos at 156, boxMax at 160, uRef at 172.
-  - `src/shaders/render3d.ts`: `VIEW3_WGSL` (the struct, which also holds `mode`, `hasBody`, `steps`, `count` and `frame` in a trailing block; grow `VIEW3_BYTES` to fit and keep `packView3` in sync), `outlineShader()`, `obstacleShader()` and `sliceShader()`. Each module binds `P: Params3` at 0, `V: View3` at 1, and its read-only storage at 2 onward.
+    - `VIEW3_BYTES = 208`.
+    - `interface View3 { viewProj: Mat4; invViewProj: Mat4; eye: Vec3; sliceAxis: 0 | 1 | 2; slicePos: number; mode: 0 | 1; uRef: number; boxMin: Vec3; boxMax: Vec3; hasBody: boolean; tracers: boolean; steps: number; count: number; frame: number }`. `mode` is 0 for speed and 1 for vorticity. `slicePos` runs from 0 to 1. The app fills every field except `count`, which `Renderer3D.encode` sets from its own particle count.
+    - `VIEW3_OFFSETS`, exported: viewProj 0, invViewProj 64, eye (vec3f) 128, sliceAxis (u32) 140, boxMin (vec3f) 144, slicePos (f32) 156, boxMax (vec3f) 160, uRef (f32) 172, mode (u32) 176, hasBody (u32) 180, steps (f32) 184, count (u32) 188, frame (u32) 192, tracers (u32) 196. The struct size, rounded to 16, is 208.
+    - `packView3(v: View3): ArrayBuffer` writes each field at its `VIEW3_OFFSETS` entry into a `VIEW3_BYTES` buffer.
+  - `src/shaders/render3d.ts`: `VIEW3_WGSL` (the struct, with fields in `VIEW3_OFFSETS` order and types), `outlineShader()`, `obstacleShader()` and `sliceShader()`. Each module binds `P: Params3` at 0, `V: View3` at 1, and its read-only storage at 2 onward.
   - `src/render3d.ts`, `class Renderer3D`:
     - `constructor(device, context, format)`, `init()`.
     - `attach(solver: Solver3D)`: rebuilds the bind groups.
     - `resize(w, h)`: recreates the `depth24plus` texture.
-    - `encode(enc, view: View3)`: one render pass that clears the colour to (0.07, 0.07, 0.08) and depth to 1, then draws the outline, obstacle, slice and tracers in that order (tracers arrive in Task 4).
+    - `encode(enc, view: View3)`: sets `view.count`, writes the uniform, then records one render pass that clears the colour to (0.07, 0.07, 0.08) and depth to 1 and draws the outline, obstacle, slice and tracers in that order (tracers arrive in Task 4). With `view.tracers` false, it skips both the advect compute pass and the tracer draw.
     - `requestPixelCount(): Promise<number>`: on the next `encode`, copies the canvas texture to a buffer and resolves with the number of pixels that differ from the clear colour by more than 8/255 in any channel.
 - **Behavior**:
   - **Outline**: 12 box edges as a `line-list` from vertex_index, grey, depth-tested.
   - **Obstacle**: a fullscreen triangle.
     1. The fragment builds a ray from `invViewProj` (near and far NDC points).
     2. It intersects the ray with [boxMin, boxMax] and discards on a miss or when `hasBody` is false.
-    3. It marches from the entry point by `clamp(d, 0.05, 1.0)` cells, where d is the trilinear SDF sample clamped to ≤ 3. It stops on a hit at d < 0.02, on leaving the box, or after `ceil(length(boxMax − boxMin)) + 2` steps.
+    3. It marches from max(tEntry, 0), so an eye inside the box starts at the eye, by `clamp(d, 0.05, 1.0)` cells, where d is the trilinear SDF sample clamped to ≤ 3. It stops on a hit at d < 0.02, on leaving the box, or after `ceil(length(boxMax − boxMin)) + 2` steps.
     4. On a hit, it shades Lambert plus ambient with the normal from central differences of the SDF (±0.5 cells) and a light from the camera direction, and writes `frag_depth` = the hit's clip z / w.
     5. Otherwise it discards.
   - **Slice**: a quad covering the domain cross-section at coordinate `slicePos · (dim − 1)` on the chosen axis, depth-tested and opaque. The fragment samples `macro`:
     - solid (nearest node `w == 0`) is grey 0.35;
     - speed: `viridis(|u| / (1.6 · uRef))`;
     - vorticity: `viridis(|curl u| / (0.3 · uRef))`, with curl from central differences of trilinear velocity at ±1 cell.
-  - The canvas is configured with `usage: RENDER_ATTACHMENT | COPY_SRC` so that `requestPixelCount` can copy it.
+  - `requestPixelCount` relies on the canvas having `COPY_SRC` usage, which Task 5 configures.
 - **Tests**:
-  - `src/view3d.test.ts`, `packView3 layout`: the written offsets match the list above, and the buffer length is `VIEW3_BYTES`. Moving a field fails it.
+  - `src/view3d.test.ts`, `packView3 layout`: pack a View3 with distinct values and read each field back at its `VIEW3_OFFSETS` entry; the buffer length is `VIEW3_BYTES`. Moving a field fails it.
   - `src/shaders/render3d.test.ts`:
     - `vertex stages read storage read-only`: no module declares `var<storage, read_write>`.
     - `obstacle writes depth and clips to the box`: `obstacleShader()` contains `@builtin(frag_depth)`, `boxMin` and `boxMax`, and its step clamp is at most `1.0`.
-    - `struct matches packing`: the `View3` field order parsed from `VIEW3_WGSL` matches the order `packView3` writes.
-- **Command**: `npm test -- view3d render3d`, then a visual check in `npm run dev` (Task 5 wires the page; for this task, check the text tests only).
+    - `struct matches packing`: parse `VIEW3_WGSL`'s fields and types, compute each offset with WGSL's uniform layout rules (f32/u32 size and alignment 4, vec3f size 12 and alignment 16, mat4x4f size 64 and alignment 16, struct size rounded up to 16), and compare the offsets with `VIEW3_OFFSETS` and the size with `VIEW3_BYTES`. Drift in either fails it.
+- **Command**: `npm test -- view3d render3d`, then the shader compile check from Conventions for the outline, obstacle and slice modules.
 
 ### - [ ] Task 4: Tracers
 
@@ -184,7 +188,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
   - `rakeSeeds(W, H, D): Float32Array`: 4 floats per particle, (x, y, z, 0) with x = 0.1·W, y = H/4 + (i % 128 + 0.5)/128 · H/2 and z = D/4 + (⌊i / 128⌋ + 0.5)/128 · D/2.
   - `tracerSubsteps(uTarget, steps): number` = `uTarget · steps > 2 ? ceil(uTarget · steps) : 1`.
   - `advectShader()`: a compute pass with workgroup 64. Bindings: P, V, `mac` (read), `seeds` (read), `particles: array<vec4f>` (read_write, 2 per particle: position and velocity).
-  - `tracerLineShader()`: vertex and fragment. Bindings: P, V, and `particles` (read) at binding 4.
+  - `tracerLineShader()`: vertex and fragment. Bindings: `V` at 1 and `particles` (read) at 4 only, with no `P`. `attach` builds its bind group with those explicit binding numbers, as `lineBG` in `src/render.ts` does, because `layout: 'auto'` drops unused bindings.
   - `Renderer3D.attach` creates the seed and particle buffers. Each initial position is the seed with x replaced by `0.1·W + random · 0.8·W`, spread downstream so the tracers don't start as one sheet.
 - **Behavior**:
   - **Advect**:
@@ -198,12 +202,12 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
   - `src/view3d.test.ts`:
     - `rakeSeeds`: 16384 × 4 floats; every x is 0.1·W; y spans (H/4, 3H/4) and z spans (D/4, 3D/4); the first and last seeds sit half a spacing inside those bounds.
     - `tracerSubsteps`: 1 for (0.1, 10) (1 cell), 1 for (0.1, 20) (exactly 2 cells), and 4 for (0.1, 34).
-  - `src/shaders/render3d.test.ts`, `line module binds particles read-only`: `tracerLineShader()` declares `particles` as `var<storage, read>`.
-- **Command**: `npm test -- view3d render3d`.
+  - `src/shaders/render3d.test.ts`, `line module binds particles read-only`: `tracerLineShader()` declares `particles` as `var<storage, read>` at binding 4, declares binding 1, and declares no binding 0.
+- **Command**: `npm test -- view3d render3d`, then the shader compile check from Conventions for the advect and line modules.
 
 ### - [ ] Task 5: The 3D page
 
-- **Files**: create `3d.html` and `src/app3d.ts`; modify `vite.config.ts` (input `tunnel3d: '3d.html'`) and `index.html` (a "3D tunnel" link beside the Validation and Benchmark links).
+- **Files**: create `3d.html` and `src/app3d.ts`; modify `vite.config.ts` (input `tunnel3d: '3d.html'`) and `index.html` (a "3D tunnel" link beside the Validation and Benchmark links). `3d.html`'s note line links back to the 2D tunnel (`index.html`), beside Validation and Benchmark.
 - **Interfaces produced**:
   - `window.tunnel3d = { ready: boolean; step(): number; cd(): number; stepsPerSecond(): number; pixelCount(): Promise<number> }` for the page tests.
 - **Context**: `src/app.ts` in full, which this imitates, and `src/app.css`, which `3d.html` reuses. It also uses Tasks 1 to 4 and the spec's Inputs and failure behavior section.
@@ -222,14 +226,15 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
     - Pause and Reset flow buttons.
   - **Readouts**: C_D mean and C_L mean over the last half of the chart, the step, `<MLUPS> MLUPS · <n> steps/frame`, and `<k> steps/s`. The steps/s value is the step delta over the last 1 s of wall time, updated every 10 frames. The page also shows the τ note and the Re warning note.
   - **Start**:
-    1. Call `initGpu({ f16: true })`. On failure, show the 2D page's no-WebGPU message.
-    2. Offer only grid presets that fit, disabling the others with a `title` giving required and available bytes. Disable FP16 with the note "FP16 isn't available on this device" when the device lacks it.
+    1. Call `initGpu({ f16: true })`. On failure, show the 2D page's no-WebGPU message. Configure the context with `{ device, format, alphaMode: 'opaque', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC }`, so `requestPixelCount` can copy the canvas.
+    2. Disable FP16 with the note "FP16 isn't available on this device" when the device lacks it. Then run `refreshPresets(precision)`: it enables exactly the presets in `presetsThatFit(precision, device.limits)` and disables the others, with a `title` giving required and available bytes.
     3. Start at `medium` (or the fallback) with FP16 if available.
   - **Changes**:
     - Obstacle, size and angle: `setSdf(buildBody(...).sdf)`, then re-derive τ with `deriveTau(re, uTarget, lRef)` and `setTau`, update the renderer's box, then `resetForces()` and `chart.clear()`.
     - Re: `setTau` only.
     - Smagorinsky: `setSmagorinsky(on ? cs : 0)`.
-    - Grid or precision: rebuild with the 2D token rule. A precision change first moves the grid to `fallbackPreset` and shows a note if the grid changed.
+    - Grid: rebuild with the 2D token rule.
+    - Precision: run `refreshPresets(newPrecision)` first, then move the grid to `fallbackPreset(currentGrid, newPrecision, limits)` with a note if the grid changed, then rebuild with the token rule.
   - **Rebuild failure**: on `Solver3D allocation failed`, try `nextSmaller` and show "Grid <name> didn't fit (<message>); using <smaller>". If `low` fails, show the error text in the no-WebGPU box.
   - **Frame loop**: as `app.ts`:
     - ramp u_in with smoothstep over 3000 steps from `rampFrom`;
@@ -237,7 +242,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
     - one compute pass (`encodeSteps(n)`, `encodeMacro`) and one render pass;
     - forces every 6 frames into the chart, scaled by `coefficientScale(uTarget, area)`, pushing C_D from fx and C_L from fy;
     - hide the chart and coefficient readouts for `none`.
-  - **Camera**: pointer drag calls `camera.rotate`, the wheel calls `camera.zoom(exp(deltaY · 0.001))`, and the canvas fills the stage at `devicePixelRatio`.
+  - **Camera**: an `OrbitCamera` with target at the domain centre ((W − 1)/2, (H − 1)/2, (D − 1)/2) and distance 1.6·W, re-created on every grid rebuild. Pointer drag calls `camera.rotate`, the wheel calls `camera.zoom(exp(deltaY · 0.001))`, and the canvas fills the stage at `devicePixelRatio`.
   - **Test hook**: `window.tunnel3d` is set once the first frame is submitted.
 - **Tests**: none new in this task. Tasks 1 to 4 cover the logic, and Task 6 covers the page. Before committing, check with `npm run dev` and the chrome-devtools MCP:
   - a screenshot shows the sphere, the slice and moving tracers;
@@ -257,9 +262,10 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
     1. `streamProgress(page, 'tunnel3d smoke')` and collect `console` messages of type `error`, plus `pageerror`s.
     2. Go to `/3d.html` and wait for `window.tunnel3d?.ready`.
     3. Wait 5 s, then assert `cd()` is finite and > 0, `pixelCount()` > 1000, and no errors were collected.
-  - `throughput` test:
+  - `throughput` test, which runs only with `THROUGHPUT=1` (`test.skip(!process.env.THROUGHPUT, 'set THROUGHPUT=1 on the reference machine with the GPU idle')`):
     1. Wait until `step()` ≥ 3000 (the ramp) with a 60 s timeout.
     2. Read `step()`, wait 10 s, and read it again.
     3. Log `steps/s <value>` and assert that (Δstep / 10) ≥ 480, which is spec criterion 5. This one needs the GPU otherwise idle, like the benchmark.
 - **Tests**: both of the above.
-- **Command**: `npx playwright test tests/tunnel3d.spec.ts`, then the full `npm run test:gpu`.
+- **Command**: `npx playwright test tests/tunnel3d.spec.ts`, then `THROUGHPUT=1 npx playwright test tests/tunnel3d.spec.ts` with the GPU idle, then the full `npm run test:gpu`.
+- **AGENTS.md**: under Commands, `npm run test:gpu` runs every spec in `tests/`: the validation cases (filtered by `CASES`), the 2D benchmark and the 3D page smoke test. `THROUGHPUT=1 npx playwright test tests/tunnel3d.spec.ts` checks the page's steps/s criterion and needs the GPU otherwise idle.
