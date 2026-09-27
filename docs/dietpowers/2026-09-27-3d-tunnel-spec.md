@@ -143,7 +143,13 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
 - `3d.html` + `src/app3d.ts`: the controls in the table below, the C_D/C_L chart through `ForceChart`, MLUPS and steps-per-second readouts, and adaptive steps per frame as in `app.ts`. The coefficients are C_D = 2F_x/(u_target² · A) and C_L = 2F_y/(u_target² · A), with A = `referenceArea(...)`. `index.html` links to `3d.html` and back, and `vite.config.ts` adds `3d.html` as a build input.
 - Page layout, on both `index.html` and `3d.html`:
   - **Canvas**: fills the viewport (`position: fixed; inset: 0`). The 2D canvas keeps the grid's aspect ratio, centred. The canvas size comes from a `ResizeObserver` (`devicePixelContentBoxSize` where available), and opening or closing the menu never resizes it.
-  - **Menu button**: top left, with the Lucide `menu` icon, which becomes `x` while open. It opens a panel that slides in from the left over the canvas, `min(360px, 100vw)` wide and `100dvh` tall. The panel is closed by default and closes with its button or Escape.
+  - **Menu button**: top right, with the Lucide `menu` icon, which becomes `x` while open. It opens a panel that slides in from the right over the canvas, `min(360px, 100vw)` wide and `100dvh` tall. The panel is closed by default and closes with its button or Escape. It is the only element over the canvas.
+  - **Panel header**, top to bottom, above the groups:
+    1. a 2D | 3D segmented switch (links to `index.html` and `3d.html`, with the current page marked `aria-current`);
+    2. the controls row: play/pause and reset flow, plus draw, erase, probe and brush size on the 2D page;
+    3. the stats: C_D, C_L, steps/s and MLUPS, plus Strouhal and the probe value on the 2D page.
+
+    Space toggles pause on both pages, with the menu open or closed.
   - **Menu groups**: collapsible `<details>` sections, each with an icon:
     - Tunnel (`box`)
     - Obstacle (`shapes`)
@@ -151,16 +157,16 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
     - View (`eye`)
     - Simulation (`gauge`; 2D only)
     - Forces (`chart-line`)
-    - Pages (`link`)
+    - Pages (`link`): validation and benchmark
   - **Scrolling**: the panel has `overflow-y: auto`, `overscroll-behavior: contain`, `touch-action: pan-y` and safe-area padding, so it scrolls on desktop and on mobile.
-  - **Toolbar**: always visible at the bottom centre, with play/pause and reset flow. The 2D page adds draw, erase and probe and the brush size.
-  - **Readout box**: always visible at the bottom left, with C_D, C_L, steps/s and MLUPS, plus Strouhal on the 2D page. It uses tabular numerals in fixed-width boxes.
+  - **Stats**: tabular numerals in fixed-width boxes.
   - **Performance**:
     - nothing over the canvas uses `backdrop-filter`;
     - the panel animates only `transform` and has `contain: layout paint style`;
     - a closed panel has `visibility: hidden` and `content-visibility: hidden`.
   - **Icons**: inline Lucide SVGs in `src/icons.ts`, with Lucide's ISC notice, so no new dependency.
   - Control element ids stay as they are.
+  > **Changed 2026-09-27 (second):** the menu button moves to the top right, and the panel slides in from the right. The toolbar controls and the stats move from floating overlays into the panel header, and a 2D | 3D switch heads the panel. Previously the toolbar and the readout box were always visible over the canvas, and the only 2D/3D link was in the Pages group. Why: the partner wants nothing over the canvas but the menu button, the controls and stats at the top of the menu, and a visible mode switch. Approved by the partner on 2026-09-27.
   > **Changed 2026-09-27:** both pages move from a fixed side panel to a full-viewport canvas with an overlay menu, toolbar and readout box, as specified above. Previously the Assumptions said "The UI follows the 2D page's layout and style". Why: the partner asked for maximum screen space for the render, a better-grouped menu that scrolls on desktop and mobile, and Lucide icons for navigation. Approved by the partner on 2026-09-27, after the design was presented. Success criterion 7 and Assumptions change with it.
 
 ### Data flow
@@ -216,7 +222,8 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
    - the menu button opens and closes the panel, and Escape closes it;
    - an open panel whose content is taller than the viewport scrolls, because its `scrollTop` changes;
    - the canvas's pixel size is the same with the menu open and closed;
-   - the existing control ids still drive the page.
+   - the existing control ids still drive the page;
+   - the 2D | 3D switch links to the other page and marks the current one.
    > **Changed 2026-09-27:** new criterion for the overlay menu; see the change note under Plan 2's page layout.
 
 ## Assumptions

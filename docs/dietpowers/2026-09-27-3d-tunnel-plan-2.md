@@ -328,3 +328,17 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 - Departure: the 3D pause test opens the menu before changing `#obstacle`, because that control now sits in the closed panel.
 - Departure: the panel is opaque (`--surface-1`), not 94% translucent. The screenshots showed the readout box and toolbar showing through, and an opaque panel also skips blending over the canvas.
 - Checked: screenshots of both pages at 1400×800 and 390×844 (phone, 3× scale), with the menu open and closed, from `.dietpowers/layout-shots.mjs`. There were no console warnings or errors. There is one verbose-level Chrome message per load about rendering in a `content-visibility` subtree.
+
+### - [ ] Task 9: Menu at the top right, controls and stats in the panel header, 2D/3D switch
+
+- **Files**: modify `index.html`, `3d.html`, `src/app.css`, `src/app3d.ts`, `tests/menu.spec.ts` and `tests/tunnel3d.spec.ts`.
+- **Behavior**, following the spec's second 2026-09-27 change:
+  - `.menu-button` is fixed at the top right, and `#panel` sits at the right, sliding in from `translateX(100%)`.
+  - The panel header is, in order: the title; a `.mode-switch` segmented control with `2D` → `index.html` and `3D` → `3d.html`, the current page carrying `aria-current="page"`; the `.controls` row with the former toolbar's buttons and tools, all ids kept; and the `#stats` `<dl>`. The Pages group keeps only the validation and benchmark links.
+  - The floating `.toolbar` and `.hud` are removed.
+  - `app3d.ts` toggles pause on Space when focus isn't in a form field, as `app.ts` does.
+- **Tests**:
+  - `tests/menu.spec.ts` gains `mode switch links to the other page` on both pages: the current segment has `aria-current="page"` and the other links to the other page.
+  - Every test that clicks `#pause` opens the menu first.
+  - `menu opens, closes and scrolls` also checks that the menu button's box sits in the right half of the viewport.
+- **Command**: `npx playwright test tests/menu.spec.ts tests/tunnel3d.spec.ts`, then screenshots with `.dietpowers/layout-shots.mjs`.
