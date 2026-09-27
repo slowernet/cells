@@ -1,0 +1,261 @@
+# 3D wind tunnel, plan 2: the 3D page
+
+Spec: docs/dietpowers/2026-09-27-3d-tunnel-spec.md @ a14f298
+Base: main
+Commits: approved
+
+**Goal:** build the interactive `3d.html` page on top of plan 1's `Solver3D`: an orbit view with a sphere-traced obstacle, a slice plane and rake tracers, the controls from the spec's Inputs table, the C_D/C_L chart, and MLUPS and steps-per-second readouts. It meets spec criteria 5 (at least 480 steps/s) and 6 (the smoke test).
+
+**Architecture:** the page copies the 2D page file for file. `3d.html` imitates `index.html`, `src/app3d.ts` imitates `src/app.ts`, `src/render3d.ts` imitates `src/render.ts`, and `src/shaders/render3d.ts` imitates `src/shaders/render.ts`. Pure logic that tests can reach without a GPU lives in three modules with unit tests:
+- `src/camera3d.ts`: orbit camera and matrices;
+- `src/view3d.ts`: the View3 uniform layout, rake seeds, tracer sub-steps and obstacle bounds;
+- `src/tunnel3d.ts`: preset fallback, obstacle SDF and reference quantities, coefficient scale.
+
+One render pass per frame draws the outline, obstacle, slice and tracers against a depth buffer. A Playwright spec covers the smoke test and the throughput criterion.
+
+## Global Constraints
+
+- Lattice: D3Q19, with weights 1/3 (rest), 1/18 (6 axis directions) and 1/36 (12 edge diagonals), and c_s² = 1/3.
+- Collision:
+  - TRT with Λ = 3/16 (`MAGIC_LAMBDA`).
+  - Optional Smagorinsky, C_s from 0.10 to 0.17, default 0.16 when enabled.
+  - τ is clamped at `TAU_MIN` = 0.51.
+- Storage: structure-of-arrays `f[i * N + cell]`, two buffers A and B that swap every step, pull streaming. Buffers hold f_i − w_i and density is `1 + Σ f`.
+- Equilibria: every equilibrium written to a buffer (init, inlet, outlet, collision) is computed directly in shifted form, `w_i · (ρ − 1 + ρ · (cu + 0.5·cu² − 1.5·u²))`, as `feq` in `src/shaders/aux.ts` does. It is never formed as f_eq − w by subtraction.
+- Precision: `'fp16' | 'fp32'`, chosen when the solver is created and baked into the generated WGSL.
+  - FP32: `array<f32>`.
+  - FP16: `enable f16;` and `array<f16>`. A store writes `f16(clamp(v, -1.99, 1.99) * 32768.0)` and a load reads `f32(x) * (1.0 / 32768.0)`. Arithmetic stays in FP32.
+- Performance:
+  - One dispatch per step, with all steps for a frame in one compute pass.
+  - No per-step readbacks.
+  - The interior fast path loads only the 19 pulled populations and the flag word.
+- Throughput floor on the reference M5, fixed now: `npm run bench` reports at least 1,200 MLUPS for `medium` FP16 and at least 600 for `medium` FP32 on the empty-domain rows, which is 75% of FluidX3D's native M5 figures. The page at defaults sustains at least 480 lattice steps per second at any display refresh rate.
+- A step shader binds at most 8 storage buffers.
+- Grid presets (W×H×D, with x as the flow direction):
+  - `low` 128×64×64;
+  - `medium` 192×96×96 (the default);
+  - `high` 256×128×128.
+- A preset is offered only when one distribution buffer, `19 · b · W·H·D` bytes with b = 2 for FP16 and 4 for FP32, is at most both `device.limits.maxStorageBufferBindingSize` and `device.limits.maxBufferSize`.
+- Flow:
+  - Target inflow speed u_target = 0.1, ramped from 0 over 3000 steps with smoothstep t²(3 − 2t), as `app.ts` and `runRamped` do. The ramped value goes only to `Params3.u_in`. Force coefficients, Re → τ and tracer respawn use u_target, never the ramped value.
+  - The outlet sponge covers the last 15% of x, with `absorb` 0.02.
+  - No inlet layer.
+- Obstacles sit at x = W/4, centered in y and z.
+- Adaptive steps per frame fill 0.85 of the display frame interval, capped at 400, as `app.ts` does. Forces are sampled every 4 steps.
+- Tracers: 16,384 particles.
+- FP16 check (`sphereFp16`) acceptance, fixed now, before the first run: |C_D,FP16 − C_D,FP32| / C_D,FP32 ≤ 1%.
+- No runtime dependencies. TypeScript and Vite, as today.
+
+## References
+
+- **Plan 1** (merged in PR #3):
+  - `Solver3D` exposes `params` (Params3 uniform), `macro` (`vec4f(ux, uy, uz, ρ)`, ρ = 0 solid), `sdf` (f32 per cell, `FAR` = 1e6 beyond 3 cells of a body), `flags`, `W`, `H`, `D`, `N`, `step` and `cfg`.
+  - Methods: `create`, `setSdf`, `initField`, `setTau`, `setInlet`, `encodeSteps`, `encodeMacro`, `readForces` (`{ step, fx, fy, fz }`), `resetForces` and `destroy`.
+  - `create` throws `Solver3D allocation failed: …` when the grid doesn't fit, and `shader-f16 is not available on this device` for FP16 without the feature.
+  - `PRESETS3`, `fitsLimits` and `Precision` are re-exported from `src/solver3d.ts`.
+  - `referenceArea`, `addSphere`, `addBox3`, `addCylinderZ` and `addWing` are in `src/geometry3d.ts`.
+  - `initGpu({ f16: true })` returns `{ device, adapter, timestamps, f16 }`.
+- **2D page patterns** (`src/app.ts`):
+  - `settings()` reads the controls, and `physics()`/`applyPhysics()` derive τ with `deriveTau(re, uRef, L)` and write the notes. The clamped-Re note text is at `app.ts:97-98`.
+  - `rebuild()` uses a token: it destroys the old solver first, and a rebuild overtaken by a later one destroys its own solver (`app.ts:138-173`).
+  - `resetBody()` calls `setSdf`, then `applyPhysics()`, then `resetForces()` (`app.ts:256-264`).
+  - `tuneSteps()` fills `FRAME_BUDGET = 0.85` of the display frame interval, capped at `MAX_SPF = 400`, using GPU timestamps when available (`app.ts:287-305`).
+  - The frame loop ramps u_in with smoothstep over `RAMP_STEPS = 3000` from `rampFrom`, reads forces every 6 frames into `ForceChart`, and computes means over the last half of the chart (`app.ts:307-410`).
+  - The no-WebGPU message is at `app.ts:28-34`, and the canvas is configured with `alphaMode: 'opaque'`.
+- **2D renderer patterns** (`src/render.ts`, `src/shaders/render.ts`): a fullscreen-triangle vertex shader, `viridis()` and `diverging()` colour maps in `COLOR_WGSL`, tracer advection as a compute pass, and line drawing in a separate module because vertex stages can't bind `read_write` storage (AGENTS.md). Pipelines use `layout: 'auto'`, so bind groups use the shader's own binding numbers.
+- **WGSL/WebGPU**:
+  - A fragment shader may write `@builtin(frag_depth)`.
+  - Storage buffers may be bound `read` in vertex and fragment stages.
+  - `context.configure({ usage: RENDER_ATTACHMENT | COPY_SRC })` allows copying the current canvas texture.
+
+## Conventions for every task
+
+- **World space is lattice space**: node (x, y, z) sits at integer coordinates, the domain box is [−0.5, W − 0.5] × [−0.5, H − 0.5] × [−0.5, D − 0.5], x is the flow direction and y is up on screen.
+- **Macro reads**: trilinear velocity from `macro` clamps indices to the grid, and a sample is solid when the nearest node has `w == 0`.
+- **Tests**: unit tests in `src/*.test.ts` run with `npm test`. The page tests in `tests/tunnel3d.spec.ts` run with `npm run test:gpu` or `npx playwright test tests/tunnel3d.spec.ts`. `npm run typecheck` stays clean after every task. After Tasks 3 to 5, open `npm run dev` and look at `/3d.html` with the chrome-devtools MCP (screenshot and console) before committing.
+
+## Tasks
+
+### - [ ] Task 1: Orbit camera
+
+- **Files**: create `src/camera3d.ts` and `src/camera3d.test.ts`.
+- **Interfaces produced**:
+  - `type Mat4 = Float32Array` (16 values, column-major, as WGSL `mat4x4f` expects).
+  - `perspective(fovY, aspect, near, far): Mat4`. It uses WebGPU clip depth 0 to 1.
+  - `lookAt(eye: Vec3, target: Vec3, up: Vec3): Mat4`.
+  - `multiply(a, b): Mat4`.
+  - `invert(m): Mat4`.
+  - `transformPoint(m, p: Vec3): Vec3`, with a perspective divide.
+  - `type Vec3 = [number, number, number]`.
+  - `class OrbitCamera`:
+    - Constructor: `(target: Vec3, distance: number)`, with `yaw = −0.6` and `pitch = 0.35` radians by default.
+    - `rotate(dxPixels, dyPixels)`: yaw and pitch change by 0.005 rad per pixel, and pitch is clamped to ±1.45.
+    - `zoom(factor)`: distance is multiplied by `factor` and clamped to [0.3, 4] × the initial distance.
+    - `eye(): Vec3`.
+    - `viewProj(aspect): Mat4`, with fovY 45°, near = distance / 100 and far = distance × 10.
+- **Behavior**: `eye = target + distance · (cos pitch · sin yaw, sin pitch, cos pitch · cos yaw)`, with up = (0, 1, 0).
+- **Tests** (`src/camera3d.test.ts`):
+  - `target projects to the centre`: `transformPoint(viewProj, target)` gives NDC x and y within 1e-6 of 0, and z in (0, 1). A wrong lookAt sign or depth range fails it.
+  - `invert round-trips`: `multiply(m, invert(m))` is the identity to 1e-5 for a viewProj.
+  - `rotate keeps distance and clamps pitch`: after large rotations, |eye − target| = distance to 1e-6 and |pitch| ≤ 1.45.
+  - `zoom clamps`: repeated `zoom(0.1)` stops at 0.3 × the initial distance.
+- **Command**: `npm test -- camera3d`.
+
+### - [ ] Task 2: Page logic helpers and the Smagorinsky setter
+
+- **Files**: create `src/tunnel3d.ts` and `src/tunnel3d.test.ts`; modify `src/solver3d.ts` and `src/solver3d.test.ts`.
+- **Interfaces produced**:
+  - `type PresetName = 'low' | 'medium' | 'high'`.
+  - `presetsThatFit(precision, limits): PresetName[]`, in `low`, `medium`, `high` order, using `fitsLimits`.
+  - `fallbackPreset(preferred: PresetName, precision, limits): PresetName | null`: the largest fitting preset no larger than `preferred`, or null.
+  - `nextSmaller(p: PresetName): PresetName | null`.
+  - `interface Body3 { obstacle: Obstacle3; sizeFraction: number; angleDeg: number }`.
+  - `buildBody(body, W, H, D): { sdf: Float32Array; lRef: number; area: number; bounds: [Vec3, Vec3] | null }`:
+    - L = sizeFraction · H cells, and the centre is (W/4, H/2, D/2), as in `sphereFp16`.
+    - sphere: `addSphere` with r = L/2.
+    - cube: `addBox3` with half-extent L/2 in each axis, angle −angleDeg (nose up for positive angles, as the 2D square does).
+    - cylinder: `addCylinderZ` with r = L/2.
+    - wing: `addWing` with chord L, span 0.6·D, angle +angleDeg in radians.
+    - none: an empty SDF, lRef = 1, area = 0, bounds = null.
+    - `area = referenceArea(obstacle, L, D)`.
+    - `bounds` is the body's axis-aligned box grown by 2 cells and clipped to the domain. For rotated shapes, use the box of the rotated extents: for the cube, half-diagonal L/√2·√2 in x-y; for the wing, chord/2 in x-y around the mid-chord.
+  - `coefficientScale(uTarget, area): number` = `2 / (uTarget² · area)`, or 0 when area is 0.
+  - `Solver3D.setSmagorinsky(cs: number)`: sets `cfg.smagorinsky` and rewrites the params.
+- **Context**: spec Inputs table; `src/geometry3d.ts`; `src/shaders/common3d.ts` `fitsLimits`/`PRESETS3`.
+- **Tests**:
+  - `src/tunnel3d.test.ts`:
+    - `presets and fallback`: against 128 MiB binding and 256 MiB buffer limits:
+      - fp16 fits `low` and `medium`;
+      - fp32 fits only `low`;
+      - `fallbackPreset('medium', 'fp32', …)` is `low`;
+      - `fallbackPreset('high', 'fp16', …)` is `medium`;
+      - with 1 MiB limits, the fallback is null.
+    - `buildBody sphere`: the centre node is solid, lRef = 19.2 for fraction 0.2 at H = 96, area = π·19.2²/4, and the bounds contain the sphere with 2 cells of margin.
+    - `buildBody none`: lRef 1, area 0, bounds null, and every SDF value is `FAR`.
+    - `coefficientScale`: 2/(0.01·100) = 2 for u = 0.1, A = 100, and 0 for A = 0.
+  - `src/solver3d.test.ts`, `setSmagorinsky writes smagC2`: after `setSmagorinsky(0.16)`, params f32 index 10 reads 0.0256.
+- **Command**: `npm test -- tunnel3d solver3d`.
+
+### - [ ] Task 3: The renderer: outline, obstacle and slice
+
+- **Files**: create `src/view3d.ts`, `src/view3d.test.ts`, `src/shaders/render3d.ts`, `src/shaders/render3d.test.ts` and `src/render3d.ts`.
+- **Interfaces produced**:
+  - `src/view3d.ts`:
+    - `VIEW3_BYTES = 176`.
+    - `interface View3 { viewProj: Mat4; invViewProj: Mat4; eye: Vec3; sliceAxis: 0 | 1 | 2; slicePos: number; mode: 0 | 1; uRef: number; boxMin: Vec3; boxMax: Vec3; hasBody: boolean; steps: number; count: number; frame: number }`. `mode` is 0 for speed and 1 for vorticity. `slicePos` runs from 0 to 1.
+    - `packView3(v: View3): ArrayBuffer`. The byte layout matches the WGSL struct: viewProj at 0, invViewProj at 64, eye (vec3f) at 128, sliceAxis (u32) at 140, boxMin at 144, slicePos at 156, boxMax at 160, uRef at 172.
+  - `src/shaders/render3d.ts`: `VIEW3_WGSL` (the struct, which also holds `mode`, `hasBody`, `steps`, `count` and `frame` in a trailing block; grow `VIEW3_BYTES` to fit and keep `packView3` in sync), `outlineShader()`, `obstacleShader()` and `sliceShader()`. Each module binds `P: Params3` at 0, `V: View3` at 1, and its read-only storage at 2 onward.
+  - `src/render3d.ts`, `class Renderer3D`:
+    - `constructor(device, context, format)`, `init()`.
+    - `attach(solver: Solver3D)`: rebuilds the bind groups.
+    - `resize(w, h)`: recreates the `depth24plus` texture.
+    - `encode(enc, view: View3)`: one render pass that clears the colour to (0.07, 0.07, 0.08) and depth to 1, then draws the outline, obstacle, slice and tracers in that order (tracers arrive in Task 4).
+    - `requestPixelCount(): Promise<number>`: on the next `encode`, copies the canvas texture to a buffer and resolves with the number of pixels that differ from the clear colour by more than 8/255 in any channel.
+- **Behavior**:
+  - **Outline**: 12 box edges as a `line-list` from vertex_index, grey, depth-tested.
+  - **Obstacle**: a fullscreen triangle.
+    1. The fragment builds a ray from `invViewProj` (near and far NDC points).
+    2. It intersects the ray with [boxMin, boxMax] and discards on a miss or when `hasBody` is false.
+    3. It marches from the entry point by `clamp(d, 0.05, 1.0)` cells, where d is the trilinear SDF sample clamped to ≤ 3. It stops on a hit at d < 0.02, on leaving the box, or after `ceil(length(boxMax − boxMin)) + 2` steps.
+    4. On a hit, it shades Lambert plus ambient with the normal from central differences of the SDF (±0.5 cells) and a light from the camera direction, and writes `frag_depth` = the hit's clip z / w.
+    5. Otherwise it discards.
+  - **Slice**: a quad covering the domain cross-section at coordinate `slicePos · (dim − 1)` on the chosen axis, depth-tested and opaque. The fragment samples `macro`:
+    - solid (nearest node `w == 0`) is grey 0.35;
+    - speed: `viridis(|u| / (1.6 · uRef))`;
+    - vorticity: `viridis(|curl u| / (0.3 · uRef))`, with curl from central differences of trilinear velocity at ±1 cell.
+  - The canvas is configured with `usage: RENDER_ATTACHMENT | COPY_SRC` so that `requestPixelCount` can copy it.
+- **Tests**:
+  - `src/view3d.test.ts`, `packView3 layout`: the written offsets match the list above, and the buffer length is `VIEW3_BYTES`. Moving a field fails it.
+  - `src/shaders/render3d.test.ts`:
+    - `vertex stages read storage read-only`: no module declares `var<storage, read_write>`.
+    - `obstacle writes depth and clips to the box`: `obstacleShader()` contains `@builtin(frag_depth)`, `boxMin` and `boxMax`, and its step clamp is at most `1.0`.
+    - `struct matches packing`: the `View3` field order parsed from `VIEW3_WGSL` matches the order `packView3` writes.
+- **Command**: `npm test -- view3d render3d`, then a visual check in `npm run dev` (Task 5 wires the page; for this task, check the text tests only).
+
+### - [ ] Task 4: Tracers
+
+- **Files**: modify `src/view3d.ts`, `src/view3d.test.ts`, `src/shaders/render3d.ts`, `src/shaders/render3d.test.ts` and `src/render3d.ts`.
+- **Interfaces produced**:
+  - `TRACER_COUNT = 16384` and `RAKE = 128` (a 128 × 128 seed grid).
+  - `rakeSeeds(W, H, D): Float32Array`: 4 floats per particle, (x, y, z, 0) with x = 0.1·W, y = H/4 + (i % 128 + 0.5)/128 · H/2 and z = D/4 + (⌊i / 128⌋ + 0.5)/128 · D/2.
+  - `tracerSubsteps(uTarget, steps): number` = `uTarget · steps > 2 ? ceil(uTarget · steps) : 1`.
+  - `advectShader()`: a compute pass with workgroup 64. Bindings: P, V, `mac` (read), `seeds` (read), `particles: array<vec4f>` (read_write, 2 per particle: position and velocity).
+  - `tracerLineShader()`: vertex and fragment. Bindings: P, V, and `particles` (read) at binding 4.
+  - `Renderer3D.attach` creates the seed and particle buffers. Each initial position is the seed with x replaced by `0.1·W + random · 0.8·W`, spread downstream so the tracers don't start as one sheet.
+- **Behavior**:
+  - **Advect**:
+    1. n = `tracerSubsteps(uRef, steps)`, h = `steps / n`.
+    2. Repeat n times: v1 = u(p), p += h · u(p + 0.5·h·v1).
+    3. If p leaves the domain box or the nearest node is solid, reset p to its seed.
+    4. Store the position and u(p).
+  - When `steps` is 0 (paused), nothing moves.
+  - **Draw**: a `line-list` with 2 vertices per particle, from p to p − (3/uRef)·u. Colour is `viridis(|u|/(1.6·uRef))` at alpha 0.8, blended over, depth-tested, and not writing depth.
+- **Tests**:
+  - `src/view3d.test.ts`:
+    - `rakeSeeds`: 16384 × 4 floats; every x is 0.1·W; y spans (H/4, 3H/4) and z spans (D/4, 3D/4); the first and last seeds sit half a spacing inside those bounds.
+    - `tracerSubsteps`: 1 for (0.1, 10) (1 cell), 1 for (0.1, 20) (exactly 2 cells), and 4 for (0.1, 34).
+  - `src/shaders/render3d.test.ts`, `line module binds particles read-only`: `tracerLineShader()` declares `particles` as `var<storage, read>`.
+- **Command**: `npm test -- view3d render3d`.
+
+### - [ ] Task 5: The 3D page
+
+- **Files**: create `3d.html` and `src/app3d.ts`; modify `vite.config.ts` (input `tunnel3d: '3d.html'`) and `index.html` (a "3D tunnel" link beside the Validation and Benchmark links).
+- **Interfaces produced**:
+  - `window.tunnel3d = { ready: boolean; step(): number; cd(): number; stepsPerSecond(): number; pixelCount(): Promise<number> }` for the page tests.
+- **Context**: `src/app.ts` in full, which this imitates, and `src/app.css`, which `3d.html` reuses. It also uses Tasks 1 to 4 and the spec's Inputs and failure behavior section.
+- **Behavior**:
+  - **Controls**, as in the spec's Inputs table, reusing `index.html`'s markup and classes:
+    - obstacle select: sphere (default), cube, cylinder, wing, none;
+    - size range 0.05–0.4 (step 0.01, default 0.2), with a readout in cells;
+    - angle range −20 to 20 (default 0), enabled for cube and wing only;
+    - Re number input 1–1e6 (default 100);
+    - grid select;
+    - precision select: FP16, FP32;
+    - Smagorinsky checkbox with C_s range 0.10–0.17 (default 0.16);
+    - view select: speed, vorticity;
+    - slice axis select: x, y, z (default z), and slice position range 0–1 (default 0.5);
+    - tracers checkbox (default on);
+    - Pause and Reset flow buttons.
+  - **Readouts**: C_D mean and C_L mean over the last half of the chart, the step, `<MLUPS> MLUPS · <n> steps/frame`, and `<k> steps/s`. The steps/s value is the step delta over the last 1 s of wall time, updated every 10 frames. The page also shows the τ note and the Re warning note.
+  - **Start**:
+    1. Call `initGpu({ f16: true })`. On failure, show the 2D page's no-WebGPU message.
+    2. Offer only grid presets that fit, disabling the others with a `title` giving required and available bytes. Disable FP16 with the note "FP16 isn't available on this device" when the device lacks it.
+    3. Start at `medium` (or the fallback) with FP16 if available.
+  - **Changes**:
+    - Obstacle, size and angle: `setSdf(buildBody(...).sdf)`, then re-derive τ with `deriveTau(re, uTarget, lRef)` and `setTau`, update the renderer's box, then `resetForces()` and `chart.clear()`.
+    - Re: `setTau` only.
+    - Smagorinsky: `setSmagorinsky(on ? cs : 0)`.
+    - Grid or precision: rebuild with the 2D token rule. A precision change first moves the grid to `fallbackPreset` and shows a note if the grid changed.
+  - **Rebuild failure**: on `Solver3D allocation failed`, try `nextSmaller` and show "Grid <name> didn't fit (<message>); using <smaller>". If `low` fails, show the error text in the no-WebGPU box.
+  - **Frame loop**: as `app.ts`:
+    - ramp u_in with smoothstep over 3000 steps from `rampFrom`;
+    - `tuneSteps` with timestamps;
+    - one compute pass (`encodeSteps(n)`, `encodeMacro`) and one render pass;
+    - forces every 6 frames into the chart, scaled by `coefficientScale(uTarget, area)`, pushing C_D from fx and C_L from fy;
+    - hide the chart and coefficient readouts for `none`.
+  - **Camera**: pointer drag calls `camera.rotate`, the wheel calls `camera.zoom(exp(deltaY · 0.001))`, and the canvas fills the stage at `devicePixelRatio`.
+  - **Test hook**: `window.tunnel3d` is set once the first frame is submitted.
+- **Tests**: none new in this task. Tasks 1 to 4 cover the logic, and Task 6 covers the page. Before committing, check with `npm run dev` and the chrome-devtools MCP:
+  - a screenshot shows the sphere, the slice and moving tracers;
+  - the console has no errors;
+  - obstacle, grid and precision switches work.
+
+  Record anything that departs from this plan as a `Departure:` line.
+- **Command**: `npm run typecheck && npm test`, plus the manual check above.
+
+### - [ ] Task 6: Page tests and docs
+
+- **Files**: create `tests/tunnel3d.spec.ts`; modify `AGENTS.md` (the Layout section, and the commands note that `npm run test:gpu` now includes the 3D page tests).
+- **Interfaces produced**: none.
+- **Context**: `tests/validate.spec.ts` and `tests/progress.ts` for the pattern; spec criteria 5 and 6.
+- **Behavior**:
+  - `smoke` test:
+    1. `streamProgress(page, 'tunnel3d smoke')` and collect `console` messages of type `error`, plus `pageerror`s.
+    2. Go to `/3d.html` and wait for `window.tunnel3d?.ready`.
+    3. Wait 5 s, then assert `cd()` is finite and > 0, `pixelCount()` > 1000, and no errors were collected.
+  - `throughput` test:
+    1. Wait until `step()` ≥ 3000 (the ramp) with a 60 s timeout.
+    2. Read `step()`, wait 10 s, and read it again.
+    3. Log `steps/s <value>` and assert that (Δstep / 10) ≥ 480, which is spec criterion 5. This one needs the GPU otherwise idle, like the benchmark.
+- **Tests**: both of the above.
+- **Command**: `npx playwright test tests/tunnel3d.spec.ts`, then the full `npm run test:gpu`.
