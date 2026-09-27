@@ -169,7 +169,7 @@ Commits: approved
     Against 4 GiB, every preset fits in both precisions. An off-by-precision byte count fails it.
 - **Command**: `npm test -- common3d`.
 
-### - [ ] Task 4: The step kernel generator
+### - [x] Task 4: The step kernel generator
 
 - **Files**: create `src/shaders/step3d.ts` and `src/shaders/step3d.test.ts`.
 - **Interfaces produced**:
