@@ -225,6 +225,7 @@ select('precision').addEventListener('change', () => {
   void rebuild([f16Note, fallback].filter(Boolean).join(' '));
 });
 select('obstacle').addEventListener('change', resetBody);
+select('sliceAxis').addEventListener('change', () => (input('slicePos').disabled = select('sliceAxis').value === 'off'));
 for (const id of ['size', 'angle']) input(id).addEventListener('input', resetBody);
 for (const id of ['re', 'smag', 'cs']) input(id).addEventListener('input', applyPhysics);
 $('pause').addEventListener('click', () => {
@@ -305,7 +306,8 @@ function frame(now: number) {
     viewProj,
     invViewProj: invert(viewProj),
     eye: camera.eye(),
-    sliceAxis: Number(select('sliceAxis').value) as 0 | 1 | 2,
+    sliceAxis: (select('sliceAxis').value === 'off' ? 0 : Number(select('sliceAxis').value)) as 0 | 1 | 2,
+    slice: select('sliceAxis').value !== 'off',
     slicePos: Number(input('slicePos').value),
     mode: Number(select('viewMode').value) as 0 | 1,
     uRef: U_TARGET,

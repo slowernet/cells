@@ -17,6 +17,8 @@ export interface View3 {
   boxMax: Vec3;
   hasBody: boolean;
   tracers: boolean;
+  /** Whether to draw the slice plane; read by Renderer3D, not packed into the uniform. */
+  slice: boolean;
   /** Lattice steps advanced this frame. */
   steps: number;
   /** Particle count; Renderer3D.encode fills it. */

@@ -190,8 +190,10 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
 | Precision | FP16 (if `shader-f16`), FP32 | FP16 if available |
 | Smagorinsky | off, or on with C_s 0.10 to 0.17 | off |
 | View | speed, vorticity | speed |
-| Slice axis / position | x, y, z / 0 to 1 | z / 0.5 |
+| Slice axis / position | x, y, z, off / 0 to 1 | z / 0.5 |
 | Tracers | on, off | on |
+
+> **Changed 2026-09-27:** the slice axis gains "off", which hides the slice plane (from x, y, z only). Why: the partner asked for a way to remove the slice entirely. Approved by the partner on 2026-09-27.
 
 - **No WebGPU or no adapter**: the page shows the 2D page's message and draws nothing.
 - **No `shader-f16`**: the precision control is disabled at FP32, with a note saying FP16 isn't available on this device.

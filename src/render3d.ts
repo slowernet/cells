@@ -133,9 +133,11 @@ export class Renderer3D {
     pass.setPipeline(this.obstaclePipe);
     pass.setBindGroup(0, this.obstacleBG);
     pass.draw(3);
-    pass.setPipeline(this.slicePipe);
-    pass.setBindGroup(0, this.sliceBG);
-    pass.draw(6);
+    if (view.slice) {
+      pass.setPipeline(this.slicePipe);
+      pass.setBindGroup(0, this.sliceBG);
+      pass.draw(6);
+    }
     if (view.tracers) {
       pass.setPipeline(this.linePipe);
       pass.setBindGroup(0, this.lineBG);

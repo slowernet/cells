@@ -35,6 +35,24 @@ test('pausing keeps steps per frame and none shows no Re warning', async ({ page
   await expect(page.locator('#reNote')).toBeHidden();
 });
 
+test('slice axis off hides the slice', async ({ page }) => {
+  await page.goto('/3d.html');
+  await page.waitForFunction(() => (window as unknown as { tunnel3d?: { ready: boolean } }).tunnel3d?.ready === true, null, { timeout: 60_000 });
+  await page.waitForTimeout(1000);
+  const pixels = () => page.evaluate(() => (window as unknown as { tunnel3d: { pixelCount(): Promise<number> } }).tunnel3d.pixelCount());
+  await page.click('.menu-button');
+  await page.uncheck('#tracers');
+  await page.keyboard.press('Escape');
+  const withSlice = await pixels();
+  await page.click('.menu-button');
+  await page.selectOption('#sliceAxis', 'off');
+  await page.keyboard.press('Escape');
+  const without = await pixels();
+  console.log(`pixels with slice ${withSlice}, without ${without}`);
+  // The slice is the largest drawn surface; without it only the outline and the obstacle remain.
+  expect(without).toBeLessThan(withSlice * 0.5);
+});
+
 test('throughput', async ({ page }) => {
   test.skip(!process.env.THROUGHPUT, 'set THROUGHPUT=1 on the reference machine with the GPU idle');
   streamProgress(page, 'tunnel3d throughput');

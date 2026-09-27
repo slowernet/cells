@@ -351,3 +351,9 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 - **Behavior**, following the spec's third 2026-09-27 change: a `pointerdown` outside the open panel and the menu button, caught in the capture phase on `window`, closes the menu. That pointer's later `pointermove`, `pointerup` and `pointercancel` events are stopped before they reach the canvas, so the press doesn't draw in 2D or orbit in 3D.
 - **Tests**: `clicking off the menu closes it without acting on the canvas` runs on both pages, at desktop (a drag) and phone (a tap). It uses the test hook `window.interactionState()`: the 2D drawn box, or the 3D camera angles. With the swallowing removed, three of the four fail; the 3D phone tap has no movement, so it can't orbit.
 - **Checked**: 18 page tests and 64 unit tests pass.
+
+### - [x] Task 11: Slice axis "off"
+
+- **Files**: modify `3d.html`, `src/view3d.ts`, `src/view3d.test.ts`, `src/render3d.ts`, `src/app3d.ts` and `tests/tunnel3d.spec.ts`.
+- **Behavior**, following the spec's slice-off change: `#sliceAxis` gains `off`. View3 gains a CPU-side `slice` flag that isn't packed into the uniform, and `Renderer3D.encode` skips the slice draw when it is false. The slice position slider is disabled while the slice is off.
+- **Tests**: `slice axis off hides the slice`. With tracers off, the drawn pixel count falls below half: it measured 123,849 with the slice and 6,299 without.

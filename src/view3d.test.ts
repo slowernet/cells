@@ -13,6 +13,7 @@ const view: View3 = {
   boxMax: [401, 402, 403],
   hasBody: true,
   tracers: true,
+  slice: true,
   steps: 12,
   count: 16384,
   frame: 7,
