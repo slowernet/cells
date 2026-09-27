@@ -345,7 +345,7 @@ Commits: approved
 - **Tests**: `CASES=sphereFp16 npm run test:gpu`. On the M5 it must pass the 1% range, and the output lists both C_D values. If it misses, find the cause and don't widen the range (AGENTS.md). Also run `npm run test:gpu` with no filter, and every 2D case must still pass (spec criterion 3).
 - **Command**: `CASES=sphereFp16 npm run test:gpu`, then `npm run test:gpu`. Follow along with `tail -f test-results/progress.log`.
 
-### - [ ] Task 9: D3Q19 benchmark rows
+### - [x] Task 9: D3Q19 benchmark rows
 
 - **Files**: modify `src/bench.ts`.
 - **Interfaces produced**: none new. `runBenchmark` appends rows with `scenario` set to `'d3q19 empty fp32'`, `'d3q19 empty fp16'`, `'d3q19 sphere fp32'` or `'d3q19 sphere fp16'`, with `height` holding `H×D` in the log line.
@@ -359,3 +359,4 @@ Commits: approved
   - After the D3Q19 rows, log one line per precision: `d3q19 floor (empty, wg 128): <MLUPS> vs <floor> MLUPS: met|missed`, with floors of 1,200 for fp16 and 600 for fp32. The floor applies to the workgroup-128 empty rows, because 128 is the solver's default workgroup, which the page runs.
 - **Tests**: `npm run bench` on the M5 prints the D3Q19 rows and both floor lines, and both say `met` (spec criterion 4). This benchmark needs the GPU to itself: close any tunnel tab and don't run validation at the same time.
 - **Command**: `npm run bench`, then `tail -f test-results/progress.log`.
+- Departure: `BenchRow` gains an optional `depth` field, so D3Q19 rows store W, H and D as numbers, rather than `height` holding `H×D` as a string. The log line prints `192x96x96`.
