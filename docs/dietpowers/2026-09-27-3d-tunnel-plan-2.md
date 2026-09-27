@@ -344,3 +344,10 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 - **Command**: `npx playwright test tests/menu.spec.ts tests/tunnel3d.spec.ts`, then screenshots with `.dietpowers/layout-shots.mjs`.
 - Departure: when the menu opens, focus moves to the panel itself (`tabindex="-1"`) instead of its first control. Both pages ignore Space only when it targets a real control (input, select, textarea, button, link or summary), so Space pauses with the menu open or closed, as the spec says. Before this, the 2D page only paused when focus was on `<body>`.
 - Checked: all 14 page tests pass (menu on both pages at both viewports, the mode switch, controls, and the 3D smoke and pause tests), plus screenshots of both pages at desktop and phone sizes with no console warnings.
+
+### - [x] Task 10: Clicking off the menu closes it
+
+- **Files**: modify `src/menu.ts`, `src/app.ts`, `src/app3d.ts` and `tests/menu.spec.ts`.
+- **Behavior**, following the spec's third 2026-09-27 change: a `pointerdown` outside the open panel and the menu button, caught in the capture phase on `window`, closes the menu. That pointer's later `pointermove`, `pointerup` and `pointercancel` events are stopped before they reach the canvas, so the press doesn't draw in 2D or orbit in 3D.
+- **Tests**: `clicking off the menu closes it without acting on the canvas` runs on both pages, at desktop (a drag) and phone (a tap). It uses the test hook `window.interactionState()`: the 2D drawn box, or the 3D camera angles. With the swallowing removed, three of the four fail; the 3D phone tap has no movement, so it can't orbit.
+- **Checked**: 18 page tests and 64 unit tests pass.

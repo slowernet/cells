@@ -390,6 +390,8 @@ const hook = {
 (window as unknown as { tunnel3d: typeof hook }).tunnel3d = hook;
 
 const chartCanvas = $('chart');
+/** Test hook: the camera angles, so tests can tell whether a canvas press orbited. */
+(window as unknown as { interactionState: () => string }).interactionState = () => JSON.stringify([state.camera?.yaw, state.camera?.pitch]);
 initMenu(() => chart.invalidate());
 await new Promise<void>((resolve) => watchCanvasSize((w, h) => (renderer.resize(w, h), resolve())));
 await rebuild(f16Note);

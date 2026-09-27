@@ -21,6 +21,26 @@ export function initMenu(onVisibility: () => void = () => {}) {
   addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && panel.classList.contains('open')) set(false);
   });
+  // A press outside the open panel closes it and is swallowed until release, so it neither draws nor orbits.
+  let swallowing = false;
+  const swallow = (e: Event) => {
+    if (!swallowing) return;
+    e.stopPropagation();
+    if (e.type === 'pointerup' || e.type === 'pointercancel') swallowing = false;
+  };
+  addEventListener(
+    'pointerdown',
+    (e) => {
+      const t = e.target as Node;
+      if (!panel.classList.contains('open') || panel.contains(t) || button.contains(t)) return;
+      e.stopPropagation();
+      e.preventDefault();
+      swallowing = true;
+      set(false);
+    },
+    { capture: true },
+  );
+  for (const type of ['pointermove', 'pointerup', 'pointercancel']) addEventListener(type, swallow, { capture: true });
   for (const d of Array.from(panel.querySelectorAll('details'))) d.addEventListener('toggle', onVisibility);
 }
 

@@ -56,6 +56,29 @@ for (const url of pages)
         expect(await canvasSize(page)).toEqual(before);
       });
 
+      test('clicking off the menu closes it without acting on the canvas', async ({ page }) => {
+        await page.goto(url);
+        await page.waitForFunction(() => Number((document.getElementById('step')?.textContent ?? '0').replace(/\D/g, '')) > 0, null, { timeout: 60_000 });
+        await page.click('.menu-button');
+        const panel = page.locator('#panel');
+        await expect(panel).toBeVisible();
+        const acted = () => page.evaluate(() => (window as unknown as { interactionState: () => string }).interactionState());
+        const before = await acted();
+        // Press and drag across the canvas's left edge, well clear of the right-hand panel.
+        const box = (await page.locator('#view').boundingBox())!;
+        const x = box.x + 20, y = box.y + box.height / 2;
+        if (vp.hasTouch) await page.touchscreen.tap(x, y);
+        else {
+          await page.mouse.move(x, y);
+          await page.mouse.down();
+          await page.mouse.move(x + 30, y + 30, { steps: 5 });
+          await page.mouse.up();
+        }
+        await expect(panel).toBeHidden();
+        await expect(page.locator('.menu-button')).toHaveAttribute('aria-expanded', 'false');
+        expect(await acted()).toBe(before);
+      });
+
       test('mode switch links to the other page', async ({ page }) => {
         await page.goto(url);
         await page.click('.menu-button');

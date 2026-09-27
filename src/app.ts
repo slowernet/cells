@@ -281,6 +281,8 @@ $('resetBody').addEventListener('click', resetBody);
 input('brush').addEventListener('input', () => ($('brushOut').textContent = input('brush').value));
 addEventListener('resize', layout);
 const chartCanvas = $('chart');
+/** Test hook: what the pointer has drawn, so tests can tell whether a canvas press acted. */
+(window as unknown as { interactionState: () => string }).interactionState = () => JSON.stringify(state.drawnBox);
 initMenu(() => chart.invalidate());
 watchCanvasSize((w, h) => renderer.resize(w, h));
 addEventListener('keydown', (e) => {
