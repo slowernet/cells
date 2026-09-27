@@ -133,6 +133,15 @@ test('params layout', async () => {
   expect(f[8]).toBeCloseTo(0.7, 6);
 });
 
+test('setSmagorinsky writes smagC2', async () => {
+  const { Solver3D } = await import('./solver3d');
+  const { device, bufs } = fakeDevice();
+  const s = await Solver3D.create(device, { ...cfg, precision: 'fp32' });
+  s.setSmagorinsky(0.16);
+  expect(new Float32Array(bufs.get(s.params)!)[10]).toBeCloseTo(0.0256, 6);
+  expect(s.cfg.smagorinsky).toBe(0.16);
+});
+
 test('buffer sizes', async () => {
   const { Solver3D } = await import('./solver3d');
   const N = 8 * 6 * 4;

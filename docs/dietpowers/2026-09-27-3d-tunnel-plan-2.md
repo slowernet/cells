@@ -104,7 +104,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
   - `zoom clamps`: repeated `zoom(0.1)` stops at 0.3 × the initial distance.
 - **Command**: `npm test -- camera3d`.
 
-### - [ ] Task 2: Page logic helpers and the Smagorinsky setter
+### - [x] Task 2: Page logic helpers and the Smagorinsky setter
 
 - **Files**: create `src/tunnel3d.ts` and `src/tunnel3d.test.ts`; modify `src/solver3d.ts` and `src/solver3d.test.ts`.
 - **Interfaces produced**:

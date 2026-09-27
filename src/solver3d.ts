@@ -185,6 +185,11 @@ export class Solver3D {
     this.writeParams();
   }
 
+  setSmagorinsky(cs: number) {
+    this.cfg.smagorinsky = cs;
+    this.writeParams();
+  }
+
   setInlet(u: number) {
     this.cfg.uIn = u;
     this.writeParams();
