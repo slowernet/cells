@@ -302,7 +302,7 @@ Commits: approved
   - `readForces discards a read overtaken by resetForces`: ported from `src/solver.test.ts` for vec4 samples.
 - **Command**: `npm test -- solver3d`.
 
-### - [ ] Task 7: Harness support for skipped cases
+### - [x] Task 7: Harness support for skipped cases
 
 - **Files**: modify `src/cases.ts`, `src/validate.ts` and `tests/validate.spec.ts`; create `src/cases.test.ts`.
 - **Interfaces produced**:

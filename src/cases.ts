@@ -2,6 +2,7 @@ import { Solver, ForceSample, SolverConfig } from './solver';
 import { XMode, YMode } from './lattice';
 import { emptySdf, addCircle, addPolygon, nacaPolygon } from './geometry';
 import { periodFromCrossings, mean, streamFunction, primaryVortex } from './analysis';
+import { CASES3D } from './cases3d';
 
 export interface Metric {
   name: string;
@@ -21,11 +22,13 @@ export interface CaseResult {
   cells: number;
   seconds: number;
   notes: string[];
+  /** Why the case did not run; a skipped case never passes. */
+  skipped?: string;
 }
 
-type Case = (device: GPUDevice, log: (s: string) => void) => Promise<Omit<CaseResult, 'pass' | 'seconds'>>;
+export type Case = (device: GPUDevice, log: (s: string) => void) => Promise<Omit<CaseResult, 'pass' | 'seconds'>>;
 
-function metric(name: string, value: number, ref: [number, number], accept: [number, number]): Metric {
+export function metric(name: string, value: number, ref: [number, number], accept: [number, number]): Metric {
   return { name, value, ref, accept, pass: value >= accept[0] && value <= accept[1] };
 }
 
@@ -438,6 +441,6 @@ export async function runCase(device: GPUDevice, key: string, log: (s: string) =
   const t0 = performance.now();
   const stamped = (msg: string) => log(`[${key} +${((performance.now() - t0) / 1000).toFixed(0)}s] ${msg.trim()}`);
   stamped('started');
-  const r = await CASES[key](device, stamped);
-  return { ...r, pass: r.metrics.every((m) => m.pass), seconds: (performance.now() - t0) / 1000 };
+  const r = await ({ ...CASES, ...CASES3D })[key](device, stamped);
+  return { ...r, pass: !r.skipped && r.metrics.every((m) => m.pass), seconds: (performance.now() - t0) / 1000 };
 }
