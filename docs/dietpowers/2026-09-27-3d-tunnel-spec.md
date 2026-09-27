@@ -27,7 +27,7 @@ Plan 2 builds on the interfaces this spec fixes for plan 1 and doesn't change th
   - One dispatch per step, with all steps for a frame in one compute pass.
   - No per-step readbacks.
   - The interior fast path loads only the 19 pulled populations and the flag word.
-- Throughput floor on the reference M5, fixed now: `npm run bench` reports at least 1,200 MLUPS for `medium` FP16 and at least 600 for `medium` FP32, which is 75% of FluidX3D's native M5 figures. The page at defaults averages at least 8 steps per frame at 60 Hz.
+- Throughput floor on the reference M5, fixed now: `npm run bench` reports at least 1,200 MLUPS for `medium` FP16 and at least 600 for `medium` FP32 on the empty-domain rows, which is 75% of FluidX3D's native M5 figures. The page at defaults sustains at least 480 lattice steps per second at any display refresh rate.
 - A step shader binds at most 8 storage buffers.
 - Grid presets (W×H×D, with x as the flow direction):
   - `low` 128×64×64;
@@ -98,7 +98,7 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
   - `cellForce` holds N entries (16·N bytes), as the 2D solver sizes it per cell, so the slot count can't overflow it.
   - `setSdf` uploads the SDF and reruns the flag build with refill. The flow continues and nothing is reallocated.
   - Change handling, as the 2D app does:
-    - obstacle, size and angle changes call `setSdf` only;
+    - obstacle, size and angle changes call `setSdf`, re-derive τ from the new reference length, and clear the force history and chart, as `resetBody` does (`src/app.ts:256-264`); the flow continues;
     - Re changes call `setTau` only;
     - grid and precision changes rebuild the solver: the app destroys the old solver before creating the new one, and holds a rebuild token so that a rebuild overtaken by a later one destroys its own solver and returns (`src/app.ts:138-173`).
 - `src/gpu.ts` (changed): `initGpu(opts?: { f16?: boolean })`. With `f16: true`, it adds `'shader-f16'` to `requiredFeatures` when `adapter.features` has it. It returns `f16: boolean`, which says whether the device has the feature. `app.ts` passes nothing and behaves exactly as today. `validate.ts`, `bench.ts` and `app3d.ts` pass `{ f16: true }`.
@@ -138,7 +138,7 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
     - A particle respawns at its seed when it leaves the domain or enters a solid cell. There is no age limit, as in the 2D streakline mode.
     - Each is drawn as a depth-tested segment from p to p − k·u, with k = 3 / u_target, so that the target speed maps to 3 cells.
   - Vertex stages bind storage read-only.
-- `3d.html` + `src/app3d.ts`: the controls in the table below, the C_D/C_L chart through `ForceChart`, MLUPS and steps-per-frame readouts, and adaptive steps per frame as in `app.ts`. The coefficients are C_D = 2F_x/(u_target² · A) and C_L = 2F_y/(u_target² · A), with A = `referenceArea(...)`. `index.html` links to `3d.html` and back, and `vite.config.ts` adds `3d.html` as a build input.
+- `3d.html` + `src/app3d.ts`: the controls in the table below, the C_D/C_L chart through `ForceChart`, MLUPS and steps-per-second readouts, and adaptive steps per frame as in `app.ts`. The coefficients are C_D = 2F_x/(u_target² · A) and C_L = 2F_y/(u_target² · A), with A = `referenceArea(...)`. `index.html` links to `3d.html` and back, and `vite.config.ts` adds `3d.html` as a build input.
 
 ### Data flow
 
@@ -182,8 +182,8 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
    - `referenceArea` for each obstacle.
 2. On a device with `shader-f16`, `CASES=sphereFp16 npm run test:gpu` passes the FP16 acceptance range. It reports C_D for both precisions and the FP32 C_D against the published value. On a device without the feature, it reports `SKIP` with the reason.
 3. The existing 2D validation cases still pass.
-4. `npm run bench` on the reference M5 reports at least 1,200 MLUPS for `medium` FP16 and at least 600 for `medium` FP32.
-5. On the reference M5, the page at defaults averages at least 8 steps per frame at 60 Hz, measured over 10 s after the ramp, and shown by the steps-per-frame readout.
+4. `npm run bench` on the reference M5 reports at least 1,200 MLUPS for `medium` FP16 and at least 600 for `medium` FP32, on the empty-domain rows.
+5. On the reference M5, the page at defaults sustains at least 480 lattice steps per second at any display refresh rate, measured over 10 s after the ramp and shown by the steps-per-second readout.
 6. A Playwright smoke test loads `3d.html` in headless Chrome at the defaults and checks that:
    - the C_D readout is finite and positive after 5 s;
    - there are no console errors;
