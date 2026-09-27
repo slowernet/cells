@@ -27,6 +27,7 @@ Plan 2 builds on the interfaces this spec fixes for plan 1 and doesn't change th
   - One dispatch per step, with all steps for a frame in one compute pass.
   - No per-step readbacks.
   - The interior fast path loads only the 19 pulled populations and the flag word.
+- Throughput floor on the reference M5, fixed now: `npm run bench` reports at least 1,200 MLUPS for `medium` FP16 and at least 600 for `medium` FP32, which is 75% of FluidX3D's native M5 figures. The page at defaults averages at least 8 steps per frame at 60 Hz.
 - A step shader binds at most 8 storage buffers.
 - Grid presets (W×H×D, with x as the flow direction):
   - `low` 128×64×64;
@@ -34,7 +35,7 @@ Plan 2 builds on the interfaces this spec fixes for plan 1 and doesn't change th
   - `high` 256×128×128.
 - A preset is offered only when one distribution buffer, `19 · b · W·H·D` bytes with b = 2 for FP16 and 4 for FP32, is at most both `device.limits.maxStorageBufferBindingSize` and `device.limits.maxBufferSize`.
 - Flow:
-  - Lattice inflow speed u = 0.1, ramped linearly from 0 over 3000 steps.
+  - Target inflow speed u_target = 0.1, ramped from 0 over 3000 steps with smoothstep t²(3 − 2t), as `app.ts` and `runRamped` do. The ramped value goes only to `Params3.u_in`. Force coefficients, Re → τ and tracer respawn use u_target, never the ramped value.
   - The outlet sponge covers the last 15% of x, with `absorb` 0.02.
   - No inlet layer.
 - Obstacles sit at x = W/4, centered in y and z.
@@ -45,7 +46,14 @@ Plan 2 builds on the interfaces this spec fixes for plan 1 and doesn't change th
 
 ## Design
 
-A separate 3D stack sits beside the 2D one and copies its patterns. The validated 2D files aren't touched, except for the `initGpu` option and the added page links described below.
+A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solver, kernels, renderer and app aren't touched. These existing files change, only as described below:
+
+- `src/gpu.ts`: the `f16` option;
+- `src/cases.ts`: `CaseResult.skipped` and `runCase`;
+- `src/validate.ts`: f16 request, `caseNames` and `SKIP`;
+- `src/bench.ts`: f16 request and D3Q19 rows;
+- `tests/validate.spec.ts`: the case list and skip handling;
+- `vite.config.ts` and `index.html`: the new page (plan 2).
 
 ### Plan 1: headless solver
 
@@ -74,11 +82,11 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The validate
   - Boundary rules in the slow path:
     - **Inlet plane x = 0**: write the equilibrium at ρ = 1 and u = (u_in, 0, 0) to every direction, with no collision.
     - **Outlet plane x = W − 1**: a population whose upstream node lies past x = W − 1 takes the same direction's post-collision value from node (W − 2, y, z) in `src`. The node then computes its own u from the pulled populations and writes the equilibrium at ρ = 1 with that u, with no collision.
-    - **Side faces y and z (slip)**: a population whose upstream node lies outside exactly one side face takes `MIRROR_Y[i]` or `MIRROR_Z[i]` from the upstream node reflected back inside across that face, as the 2D `Y_SLIP` rule does. A population whose upstream node lies outside both a y face and a z face (edge links, c_x = 0) takes `OPP[i]` from the node itself. For those links, `OPP[i]` equals the double mirror.
+    - **Side faces y and z (slip)**: a population whose upstream node lies outside exactly one side face takes `MIRROR_Y[i]` or `MIRROR_Z[i]` from the upstream node reflected back inside across that face, as the 2D `Y_SLIP` rule does. A population whose upstream node lies outside both a y face and a z face (edge links, c_x = 0) takes `OPP[i]` from the node itself. For those links, `OPP[i]` equals the double mirror. When the source node a side-face rule would read is solid, which happens where the spanwise cylinder or wing meets a z face, the population is halfway bounce-back instead: `OPP[i]` post-collision from the node itself. That link is counted in momentum exchange like any body link, and the flag build gives the node a force slot.
     - **Obstacles**: Bouzidi interpolated bounce-back, with q from the SDF along the link, and momentum exchange accumulated into `cellForce[slot − 1]`, as in 2D.
     - **Absorbing layer**: over the last 15% of x, τ rises toward `tauSponge` and populations relax toward the inflow equilibrium at rate `absorb`, as in 2D.
 - `src/shaders/aux3d.ts`:
-  - flag and slot build from the SDF, with an atomic slot counter; inlet and outlet planes stay fluid;
+  - flag and slot build from the SDF, with an atomic slot counter; inlet and outlet planes stay fluid. A node gets a slot when any of its links has a solid upstream node, directly or through the side-face source rule. The same kernel refills a cell that was solid and is now fluid with the equilibrium at the average ρ and u of its non-solid neighbours in `macro`, or at ρ = 1 and the inflow u if there are none, as the 2D `flagsShader` does;
   - init of every fluid cell to the inflow equilibrium at the current u_in;
   - the macro kernel, which writes vec4f (ux, uy, uz, ρ) per cell, with ρ = 0 marking a solid cell;
   - force reduction of `cellForce` into a vec3 history ring, as in 2D.
@@ -87,20 +95,30 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The validate
   - Methods: `setSdf(Float32Array)`, `initField()`, `setTau(tau)`, `setInlet(u)`, `encodeSteps(pass, n)`, `encodeMacro(pass)`, `readForces(): Promise<ForceSample3[]>` (`{ step, fx, fy, fz }`), `readMacro()`, `run(n)` for tests, and `destroy()`.
   - It exposes the `macro`, `sdf` and `flags` buffers to the renderer.
   - `fitsLimits(W, H, D, precision, limits): boolean` is exported pure.
-  - Changing the obstacle, size, angle, grid or precision rebuilds the solver and restarts from the inflow state. Changing Re only calls `setTau`.
-- `src/gpu.ts` (changed): `initGpu(opts?: { f16?: boolean })`. With `f16: true`, it adds `'shader-f16'` to `requiredFeatures` when `adapter.features` has it. It returns `f16: boolean`, which says whether the device has the feature. The 2D callers pass nothing and behave exactly as today.
+  - `cellForce` holds N entries (16·N bytes), as the 2D solver sizes it per cell, so the slot count can't overflow it.
+  - `setSdf` uploads the SDF and reruns the flag build with refill. The flow continues and nothing is reallocated.
+  - Change handling, as the 2D app does:
+    - obstacle, size and angle changes call `setSdf` only;
+    - Re changes call `setTau` only;
+    - grid and precision changes rebuild the solver: the app destroys the old solver before creating the new one, and holds a rebuild token so that a rebuild overtaken by a later one destroys its own solver and returns (`src/app.ts:138-173`).
+- `src/gpu.ts` (changed): `initGpu(opts?: { f16?: boolean })`. With `f16: true`, it adds `'shader-f16'` to `requiredFeatures` when `adapter.features` has it. It returns `f16: boolean`, which says whether the device has the feature. `app.ts` passes nothing and behaves exactly as today. `validate.ts`, `bench.ts` and `app3d.ts` pass `{ f16: true }`.
 - `src/geometry3d.ts`: SDF builders on a W×H×D `Float32Array`, in cells and negative inside, with nodes at integer coordinates. They stamp true distances within a margin of the body and `FAR` elsewhere, as `geometry.ts` does. Union is `min`.
   - `emptySdf3(W, H, D)`
   - `addSphere(cx, cy, cz, r)`
   - `addBox3(cx, cy, cz, hx, hy, hz, angleZ)`
   - `addCylinderZ(cx, cy, r)`, spanning the full z extent
   - `addWing(cx, cy, cz, chord, span, angleZ)`: a NACA0012 section from `nacaPolygon`, extruded over `span` and centered in z, with flat tips.
-  - `referenceArea(obstacle, size, D)`: sphere π·size²/4, cube size², cylinder size·D, wing chord·span with span = 0.6·D.
-- `src/cases3d.ts`: `CASES3D` with `sphereFp16`, using the existing `Metric` and `CaseResult` shapes. `CaseResult` gains an optional `skipped?: string`. `runCase` and `caseNames` in `src/validate.ts` cover `{...CASES, ...CASES3D}`, and the default list in `tests/validate.spec.ts` includes `sphereFp16`.
+  - `referenceArea(obstacle, size, D)`, with `size` in cells (the UI's fraction × H): sphere π·size²/4, cube size², cylinder size·D, wing size·span with span = 0.6·D. With obstacle `none`, the app hides the chart and coefficient readouts.
+- `src/cases3d.ts`: `CASES3D` with `sphereFp16`. It imports only types and helpers from `src/cases.ts`.
+- Harness changes:
+  - `CaseResult` in `src/cases.ts` gains an optional `skipped?: string`.
+  - `runCase` in `src/cases.ts` looks keys up in `{...CASES, ...CASES3D}` and sets `pass = false` whenever `skipped` is set.
+  - `caseNames` in `src/validate.ts` covers both registries, and `formatResult` prints `SKIP  <name>: <reason>` for a skipped case.
+  - `tests/validate.spec.ts` adds `sphereFp16` to its default list and calls `test.skip(true, reason)` when a result has `skipped`, so a skip never counts as a pass or a failure.
 - `sphereFp16`:
   - Setup: the `medium` grid, a sphere of diameter 16 at (W/4, H/2, D/2), Re 100 on the diameter, and u = 0.1, which gives τ = 0.548.
   - It runs FP32 first, then FP16, with identical settings.
-  - Each run advances in blocks of 2,000 steps. It stops once C_D changes by less than 1e-4 relative between blocks, after at least 5 blocks and at most 15. C_D is the mean over the last block.
+  - Each run advances in blocks of 2,000 steps. It stops once C_D changes by less than 1e-4 relative between blocks, after at least 5 blocks and at most 15. C_D is the mean over the last block. If a run reaches 15 blocks without converging, the result gets a note, and the 1% gate still applies to the last-block means.
   - It gates the acceptance range above and reports both C_D values and the FP32 C_D against the published Re-100 sphere drag, without gating those.
   - It logs `check k/max` progress through `tests/progress.ts`.
   - Without `shader-f16`, it returns `skipped` and never passes.
@@ -114,12 +132,13 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The validate
   - **Obstacle**: sphere-traced through the SDF buffer with trilinear sampling. Each ray is clipped to the obstacle's bounding box plus 2 cells, which is known on the CPU. Rays that miss the box skip the march. Each march step is at most 1 cell, and the obstacle is shaded by the SDF-gradient normal. The fragment writes `frag_depth`.
   - **Slice plane**: axis x, y or z, position 0 to 1. It samples `macro` and shows either speed (viridis) or vorticity magnitude (central differences, sequential map). Solid cells are grey.
   - **Tracers**:
-    - A compute pass advects the particles with trilinear velocity from `macro`, once per frame.
+    - A compute pass advects the particles with trilinear velocity from `macro`, once per frame, as the 2D tracers do (`src/shaders/render.ts:125-151`).
+    - The integrator takes one midpoint step with dt = the lattice steps advanced this frame. When u_target · dt exceeds 2 cells, it splits dt into equal sub-steps of at most 1 cell of travel at u_target.
     - Seeds sit on a regular rake grid at x = 0.1·W, covering the middle half of y and z.
-    - A particle respawns at its seed when it leaves the domain, enters a solid cell or reaches an age of 4·W/u_in steps.
-    - Each is drawn as a depth-tested segment from p to p − k·u, with k chosen so that u_in maps to 3 cells.
+    - A particle respawns at its seed when it leaves the domain or enters a solid cell. There is no age limit, as in the 2D streakline mode.
+    - Each is drawn as a depth-tested segment from p to p − k·u, with k = 3 / u_target, so that the target speed maps to 3 cells.
   - Vertex stages bind storage read-only.
-- `3d.html` + `src/app3d.ts`: the controls in the table below, the C_D/C_L chart through `ForceChart`, an MLUPS readout, and adaptive steps per frame as in `app.ts`. The coefficients are C = 2F/(u_in² · A) with A = `referenceArea(...)`. `index.html` links to `3d.html` and back, and `vite.config.ts` adds `3d.html` as a build input.
+- `3d.html` + `src/app3d.ts`: the controls in the table below, the C_D/C_L chart through `ForceChart`, MLUPS and steps-per-frame readouts, and adaptive steps per frame as in `app.ts`. The coefficients are C_D = 2F_x/(u_target² · A) and C_L = 2F_y/(u_target² · A), with A = `referenceArea(...)`. `index.html` links to `3d.html` and back, and `vite.config.ts` adds `3d.html` as a build input.
 
 ### Data flow
 
@@ -146,11 +165,12 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The validate
 
 - **No WebGPU or no adapter**: the page shows the 2D page's message and draws nothing.
 - **No `shader-f16`**: the precision control is disabled at FP32, with a note saying FP16 isn't available on this device.
+- **Precision changed to one the selected grid doesn't fit**: the grid drops to the largest preset that fits the new precision, and a note says so.
 - **Preset doesn't fit**: it is disabled in the selector, with a tooltip giving the required and available bytes. `low` in FP32 needs 19 · 4 · 524,288 = 39.8 MB per buffer, under the 128 MiB spec default, so at least one preset is always available.
 - **Re above `maxReynolds`**: the input is kept, τ is clamped at 0.51, and the UI shows the 2D warning text with the effective Re.
 - **Buffer allocation fails**: `Solver3D.create` wraps allocation in `pushErrorScope('out-of-memory')` and `pushErrorScope('validation')`. On an error it destroys what it allocated and throws. `app3d.ts` then tries the next smaller preset and tells the user. If `low` also fails, the page shows the error text. `sphereFp16` returns `skipped` with the error text and never changes grid.
 - **Device lost**: the error is logged to the console, with no recovery, as in 2D.
-- **Setting changed**: the solver or SDF is rebuilt as described under `solver3d.ts`. Rebuilding with unchanged settings gives the same state.
+- **Setting changed**: handled as described under `solver3d.ts`. Obstacle changes keep the flow running. Overlapping grid or precision rebuilds resolve to the latest settings, with no leaked solver. Rebuilding with unchanged settings gives the same state.
 
 ## Success criteria
 
@@ -162,8 +182,9 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The validate
    - `referenceArea` for each obstacle.
 2. On a device with `shader-f16`, `CASES=sphereFp16 npm run test:gpu` passes the FP16 acceptance range. It reports C_D for both precisions and the FP32 C_D against the published value. On a device without the feature, it reports `SKIP` with the reason.
 3. The existing 2D validation cases still pass.
-4. `npm run bench` prints D3Q19 FP32 and FP16 MLUPS rows for `medium`.
-5. A Playwright smoke test loads `3d.html` in headless Chrome at the defaults and checks that:
+4. `npm run bench` on the reference M5 reports at least 1,200 MLUPS for `medium` FP16 and at least 600 for `medium` FP32.
+5. On the reference M5, the page at defaults averages at least 8 steps per frame at 60 Hz, measured over 10 s after the ramp, and shown by the steps-per-frame readout.
+6. A Playwright smoke test loads `3d.html` in headless Chrome at the defaults and checks that:
    - the C_D readout is finite and positive after 5 s;
    - there are no console errors;
    - the canvas isn't blank (some pixel differs from the clear color).
@@ -176,7 +197,6 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The validate
 - The sphere sits 3 diameters from the inlet in `sphereFp16`, which confines it more than the 2D references allow. That biases both precisions equally, so the FP16-to-FP32 comparison is still valid. The comparison with published drag is reported, not gated, for this reason.
 - The published sphere drag at Re 100 is C_D ≈ 1.09 (Johnson & Patel 1999). **Unverified**: the research didn't retrieve it, and it is reported only.
 - WGSL leaves the f32 → f16 rounding mode unspecified. If the M5's backend truncates, FP16 accuracy may be worse than Lehmann's figures. `sphereFp16` measures the combined effect.
-- Restarting on obstacle changes, instead of refilling uncovered cells, is acceptable. The flow re-develops in about 3 s on `medium`.
 - The UI follows the 2D page's layout and style.
 
 ## References
@@ -210,7 +230,7 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The validate
 - D3Q27 as a generator switch, the Bauer-Rüde D3Q19 equilibrium, and cumulant or regularized collision.
 - A full 3D validation suite: square-duct Poiseuille, 3D Taylor-Green, cavity, and gated sphere drag.
 - Hecht-Harting Zou-He inlet and outlet faces for validation runs.
-- Drawing obstacles with a brush, mesh upload, and refill on obstacle change instead of restarting.
+- Drawing obstacles with a brush, and mesh upload.
 - Density and Schlieren views, and volume ray marching.
 - A shared lattice-parametric generator for 2D and 3D.
 - The deep-research gaps: measured WebGPU D3Q19 throughput, f16 rounding per backend, and `array<f16>` against `pack2x16float`.
