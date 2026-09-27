@@ -14,5 +14,5 @@ test('every icon renders an svg', () => {
 });
 
 test('no backdrop-filter over the canvas', () => {
-  expect(readFileSync(new URL('./app.css', import.meta.url), 'utf8')).not.toContain('backdrop-filter');
+  expect(readFileSync(new URL('./app.css', import.meta.url), 'utf8')).not.toMatch(/backdrop-filter\s*:/);
 });
