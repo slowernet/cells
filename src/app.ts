@@ -7,6 +7,7 @@ import { periodFromCrossings, mean } from './analysis';
 import { Renderer, ViewMode, TracerMode } from './render';
 import { ForceChart } from './chart';
 import { initMenu, isShown } from './menu';
+import { nextStepsPerFrame } from './tunnel3d';
 import { icon } from './icons';
 
 type Obstacle = 'cylinder' | 'naca' | 'square' | 'plate' | 'none';
@@ -19,7 +20,6 @@ const RAMP_STEPS = 3000;
 const FORCE_EVERY = 4;
 /** Fraction of the display frame interval given to simulation compute. */
 const FRAME_BUDGET = 0.85;
-const MAX_SPF = 400;
 /** Default reference length as a fraction of the grid height. */
 const DEFAULT_SIZE: Record<Obstacle, number> = { cylinder: 0.1, naca: 0.25, square: 0.1, plate: 0.12, none: 0.1 };
 
@@ -317,8 +317,7 @@ function tuneSteps(frameMs: number) {
   // Fill most of the frame: a partly idle GPU gets down-clocked, which makes each step slower.
   const budget = FRAME_BUDGET * state.interval;
   const cost = state.gpuMs > 0 ? state.gpuMs : frameMs - 3;
-  const ratio = budget / Math.max(0.5, cost);
-  state.spf = Math.round(Math.min(MAX_SPF, Math.max(1, state.spf * Math.min(1.1, Math.max(0.8, ratio)))));
+  state.spf = nextStepsPerFrame(state.spf, budget / Math.max(0.5, cost));
 }
 
 function updateStats() {
