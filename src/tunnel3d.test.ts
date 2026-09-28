@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest';
 import { FAR } from './geometry';
-import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, nextStepsPerFrame, tuneStepsPerFrame, FRAME_BUDGET_MS } from './tunnel3d';
+import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, nextStepsPerFrame, tuneStepsPerFrame, FRAME_BUDGET_MS, hasDiverged } from './tunnel3d';
 
 const small = { maxStorageBufferBindingSize: 128 * 2 ** 20, maxBufferSize: 256 * 2 ** 20 };
 const tiny = { maxStorageBufferBindingSize: 2 ** 20, maxBufferSize: 2 ** 20 };
@@ -66,4 +66,12 @@ test('tuner targets a fixed budget of 0.85 x 16.7 ms', () => {
   expect(tuneStepsPerFrame(10, 7)).toBe(11);
   expect(tuneStepsPerFrame(10, 14.195)).toBe(10);
   expect(tuneStepsPerFrame(20, 28.39)).toBe(16);
+});
+
+test('divergence is any non-finite force sample', () => {
+  expect(hasDiverged([])).toBe(false);
+  expect(hasDiverged([{ fx: 1, fy: -2 }, { fx: 1e30, fy: 0, fz: 3 }])).toBe(false);
+  expect(hasDiverged([{ fx: 1, fy: 2 }, { fx: NaN, fy: 0 }])).toBe(true);
+  expect(hasDiverged([{ fx: 1, fy: Infinity }])).toBe(true);
+  expect(hasDiverged([{ fx: 1, fy: 2, fz: -Infinity }])).toBe(true);
 });

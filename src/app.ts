@@ -6,8 +6,8 @@ import { deriveTau, maxReynolds } from './units';
 import { periodFromCrossings, mean } from './analysis';
 import { Renderer, ViewMode, TracerMode } from './render';
 import { ForceChart } from './chart';
-import { initMenu, isShown } from './menu';
-import { tuneStepsPerFrame } from './tunnel3d';
+import { initMenu, isShown, showToast } from './menu';
+import { tuneStepsPerFrame, hasDiverged } from './tunnel3d';
 import { icon } from './icons';
 
 type Obstacle = 'cylinder' | 'naca' | 'square' | 'plate' | 'none';
@@ -392,7 +392,11 @@ function frame(now: number) {
     const u = uRef();
     const scale = 2 / (u * u * state.lRef);
     solver.readForces().then((samples) => {
-      if (solver === state.solver) for (const f of samples) chart.push(f.step, f.fx * scale, f.fy * scale);
+      if (solver === state.solver && hasDiverged(samples)) {
+        // Once NaN appears every later step stays NaN: restart the flow, keeping the obstacles and settings.
+        resetFlow();
+        showToast('The flow became unstable: the local speed near an obstacle exceeded what the lattice can represent. Try a lower lattice speed, a smaller obstacle, or more room around it.');
+      } else if (solver === state.solver) for (const f of samples) chart.push(f.step, f.fx * scale, f.fy * scale);
       forcesInFlight = false;
       updateStats();
     });

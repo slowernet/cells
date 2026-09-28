@@ -91,3 +91,8 @@ export const FRAME_BUDGET_MS = 0.85 * 16.7;
 export function tuneStepsPerFrame(spf: number, costMs: number): number {
   return nextStepsPerFrame(spf, FRAME_BUDGET_MS / Math.max(0.5, costMs));
 }
+
+/** True when any force sample is non-finite: the flow has blown up and every later step is NaN. */
+export function hasDiverged(samples: ReadonlyArray<{ fx: number; fy: number; fz?: number }>): boolean {
+  return samples.some((f) => !Number.isFinite(f.fx) || !Number.isFinite(f.fy) || (f.fz !== undefined && !Number.isFinite(f.fz)));
+}

@@ -51,3 +51,21 @@ export function isShown(el: Element): boolean {
   for (let d = el.closest('details'); d; d = d.parentElement?.closest('details') ?? null) if (!d.open) return false;
   return true;
 }
+
+let toastTimer = 0;
+
+/** Shows a short message at the top centre for 8 s, or until clicked. */
+export function showToast(text: string) {
+  let el = document.querySelector<HTMLElement>('.toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'toast';
+    el.setAttribute('role', 'status');
+    el.addEventListener('click', () => (el!.hidden = true));
+    document.body.append(el);
+  }
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => (el!.hidden = true), 8000);
+}

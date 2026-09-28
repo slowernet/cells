@@ -3,11 +3,11 @@ import { Solver3D, PRESETS3, type Precision } from './solver3d';
 import { deriveTau, maxReynolds } from './units';
 import { mean } from './analysis';
 import { ForceChart } from './chart';
-import { initMenu, isShown } from './menu';
+import { initMenu, isShown, showToast } from './menu';
 import { icon } from './icons';
 import { OrbitCamera, invert } from './camera3d';
 import { Renderer3D } from './render3d';
-import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, tuneStepsPerFrame, type PresetName } from './tunnel3d';
+import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, tuneStepsPerFrame, hasDiverged, type PresetName } from './tunnel3d';
 import type { Obstacle3 } from './geometry3d';
 import type { Vec3 } from './camera3d';
 
@@ -334,7 +334,11 @@ function frame(now: number) {
     forcesInFlight = true;
     const scale = coefficientScale(U_TARGET, state.area);
     solver.readForces().then((samples) => {
-      if (solver === state.solver && scale > 0) for (const f of samples) chart.push(f.step, f.fx * scale, f.fy * scale);
+      if (solver === state.solver && hasDiverged(samples)) {
+        // Once NaN appears every later step stays NaN: restart the flow, keeping the obstacle and settings.
+        resetFlow();
+        showToast('The flow became unstable: the local speed near the obstacle exceeded what the lattice can represent. Try a smaller obstacle or a lower Reynolds number.');
+      } else if (solver === state.solver && scale > 0) for (const f of samples) chart.push(f.step, f.fx * scale, f.fy * scale);
       forcesInFlight = false;
       updateStats();
     });
