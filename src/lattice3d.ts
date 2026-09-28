@@ -1,3 +1,5 @@
+import { MAGIC_LAMBDA } from './lattice';
+
 // D3Q19 velocity set. Odd i and i + 1 are opposite and form TRT pairs.
 export const CX = [0, 1, -1, 0, 0, 0, 0, 1, -1, 1, -1, 0, 0, 1, -1, 1, -1, 0, 0] as const;
 export const CY = [0, 0, 0, 1, -1, 0, 0, 1, -1, 0, 0, 1, -1, -1, 1, 0, 0, 1, -1] as const;
@@ -22,6 +24,11 @@ export const PAIRS: ReadonlyArray<readonly [number, number]> = Array.from({ leng
 export const FLAG_SOLID = 1 << 19;
 export const FLAG_INLET = 1 << 20;
 export const FLAG_OUTLET = 1 << 21;
+
+/** TRT Λ: the magic 3/16 where stable, shrinking toward BGK below τ ≈ 0.561, where the inlet drives odd modes unstable. */
+export function trtLambda3(tau: number): number {
+  return Math.min(MAGIC_LAMBDA, 50 * (tau - 0.5) ** 2);
+}
 
 export function equilibrium3(rho: number, ux: number, uy: number, uz: number, out: Float32Array | number[] = new Array(Q3)) {
   const usq = 1.5 * (ux * ux + uy * uy + uz * uz);

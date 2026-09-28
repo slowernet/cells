@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { CX, CY, CZ, W, OPP, MIRROR_Y, MIRROR_Z, PAIRS, Q3, FLAG_SOLID, FLAG_INLET, FLAG_OUTLET, equilibrium3 } from './lattice3d';
+import { CX, CY, CZ, W, OPP, MIRROR_Y, MIRROR_Z, PAIRS, Q3, FLAG_SOLID, FLAG_INLET, FLAG_OUTLET, equilibrium3, trtLambda3 } from './lattice3d';
 
 const C = [CX, CY, CZ];
 
@@ -67,4 +67,10 @@ test('flag bits', () => {
   expect(FLAG_SOLID & FLAG_INLET).toBe(0);
   expect(FLAG_SOLID & FLAG_OUTLET).toBe(0);
   expect(FLAG_INLET & FLAG_OUTLET).toBe(0);
+});
+
+test('trtLambda3 keeps 3/16 at moderate tau and shrinks toward BGK near 1/2', () => {
+  expect(trtLambda3(0.6)).toBe(3 / 16);
+  expect(trtLambda3(0.5288)).toBeCloseTo(50 * 0.0288 ** 2, 12);
+  expect(trtLambda3(0.51)).toBeCloseTo(0.005, 12);
 });

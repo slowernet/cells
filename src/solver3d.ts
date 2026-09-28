@@ -1,5 +1,4 @@
-import { MAGIC_LAMBDA } from './lattice';
-import { Q3 } from './lattice3d';
+import { Q3, trtLambda3 } from './lattice3d';
 import { FAR } from './geometry';
 import { PARAMS3_BYTES, Precision, bytesPerPopulation, fitsLimits } from './shaders/common3d';
 import { step3dShader } from './shaders/step3d';
@@ -15,6 +14,7 @@ export interface Solver3DConfig {
   depth: number;
   precision: Precision;
   tau: number;
+  /** Fixed TRT Λ; by default it follows τ through trtLambda3. */
   lambda?: number;
   /** Smagorinsky constant C_s; 0 disables the subgrid model. */
   smagorinsky?: number;
@@ -46,7 +46,7 @@ export class Solver3D {
   readonly N: number;
   readonly wg: number;
   readonly groups: [number, number];
-  readonly cfg: Required<Solver3DConfig>;
+  readonly cfg: Required<Omit<Solver3DConfig, 'lambda'>> & Pick<Solver3DConfig, 'lambda'>;
   step = 0;
   private parity = 0;
   private forceSamplesRead = 0;
@@ -108,7 +108,6 @@ export class Solver3D {
     config: Solver3DConfig,
   ) {
     this.cfg = {
-      lambda: MAGIC_LAMBDA,
       smagorinsky: 0,
       uIn: 0,
       spongeFraction: 0,
@@ -201,7 +200,7 @@ export class Solver3D {
     const u = new Uint32Array(buf);
     const f = new Float32Array(buf);
     u.set([this.W, this.H, this.D, this.N, this.groups[0]]);
-    f.set([c.tau, c.lambda, c.smagorinsky * c.smagorinsky, c.uIn], 8);
+    f.set([c.tau, c.lambda ?? trtLambda3(c.tau), c.smagorinsky * c.smagorinsky, c.uIn], 8);
     f[12] = c.spongeFraction > 0 ? (this.W - 1) * (1 - c.spongeFraction) : 1e9;
     f[13] = Math.max(c.spongeTau, c.tau);
     f[14] = c.absorb;
