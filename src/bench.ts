@@ -141,7 +141,8 @@ export async function runBenchmark(log: (s: string) => void = () => {}): Promise
 async function bench3D(device: GPUDevice, timestamps: boolean, f16: boolean, log: (s: string) => void): Promise<BenchRow[]> {
   const [W, H, D] = PRESETS3.medium;
   const N = W * H * D;
-  const steps = Math.max(100, Math.round(4e8 / N));
+  // About 2 s per repeat; shorter windows swing ~15% with GPU clock ramping.
+  const steps = Math.max(100, Math.round(2e9 / N));
   const rows: BenchRow[] = [];
   const precisions: Precision[] = f16 ? ['fp32', 'fp16'] : ['fp32'];
   precisionLoop: for (const precision of precisions)
@@ -165,12 +166,14 @@ async function bench3D(device: GPUDevice, timestamps: boolean, f16: boolean, log
         s.initField();
         const encode: Encode = (pass, n) => s.encodeSteps(pass, n);
         await measure(device, encode, 50, timestamps);
-        const { ms, timer } = await measure(device, encode, steps, timestamps);
+        const runs = [];
+        for (let k = 0; k < 3; k++) runs.push(await measure(device, encode, steps, timestamps));
+        const { ms, timer } = runs.sort((a, b) => a.ms - b.ms)[1];
         const mlups = (N * steps) / (ms * 1e3);
         const scenario = `d3q19 ${body ? 'sphere' : 'empty'} ${precision}`;
         const row: BenchRow = { scenario, width: W, height: H, depth: D, workgroup: wg, forceEvery, steps, ms, mlups, gbps: (mlups * 1e6 * bytesPerCell3D(precision)) / 1e9, timer };
         rows.push(row);
-        log(`${scenario.padEnd(18)} ${`${W}x${H}x${D}`.padEnd(12)} wg ${String(wg).padEnd(4)} force ${forceEvery ? 'every 4   ' : 'off       '} ${mlups.toFixed(0).padStart(6)} MLUPS  ${row.gbps.toFixed(0).padStart(4)} GB/s  (${steps} steps, ${ms.toFixed(1)} ms)`);
+        log(`${scenario.padEnd(18)} ${`${W}x${H}x${D}`.padEnd(12)} wg ${String(wg).padEnd(4)} force ${forceEvery ? 'every 4   ' : 'off       '} ${mlups.toFixed(0).padStart(6)} MLUPS  ${row.gbps.toFixed(0).padStart(4)} GB/s  (${steps} steps, median of 3: ${ms.toFixed(1)} ms)`);
         s.destroy();
       }
   for (const precision of precisions) {

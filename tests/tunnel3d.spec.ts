@@ -35,6 +35,16 @@ test('pausing keeps steps per frame and none shows no Re warning', async ({ page
   await expect(page.locator('#reNote')).toBeHidden();
 });
 
+test('none shows the Re note when tau clamps', async ({ page }) => {
+  streamProgress(page, 'tunnel3d none clamp');
+  await page.goto('/3d.html');
+  await page.waitForFunction(() => (window as unknown as { tunnel3d?: { ready: boolean } }).tunnel3d?.ready === true, null, { timeout: 60_000 });
+  await page.click('.menu-button');
+  await page.selectOption('#obstacle', 'none');
+  await page.fill('#re', '1000000');
+  await expect(page.locator('#reNote')).toContainText('needs τ below 0.51');
+});
+
 test('slice axis off hides the slice', async ({ page }) => {
   await page.goto('/3d.html');
   await page.waitForFunction(() => (window as unknown as { tunnel3d?: { ready: boolean } }).tunnel3d?.ready === true, null, { timeout: 60_000 });

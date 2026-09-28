@@ -42,6 +42,7 @@ test('2D recovers from a blown-up flow and keeps the drawing', async ({ page }) 
 });
 
 test('2D with no obstacle stays stable at the default Re', async ({ page }) => {
+  streamProgress(page, 'blowup 2D none stable');
   await page.goto('/index.html');
   await page.waitForFunction(() => Number((document.getElementById('step')?.textContent ?? '0').replace(/\D/g, '')) > 0, null, { timeout: 60_000 });
   await page.evaluate(() => {
@@ -55,6 +56,7 @@ test('2D with no obstacle stays stable at the default Re', async ({ page }) => {
 });
 
 test('2D with no obstacle still detects a blow-up through the field check', async ({ page }) => {
+  streamProgress(page, 'blowup 2D none field check');
   await page.goto('/index.html');
   await page.waitForFunction(() => Number((document.getElementById('step')?.textContent ?? '0').replace(/\D/g, '')) > 0, null, { timeout: 60_000 });
   await page.evaluate(() => {
