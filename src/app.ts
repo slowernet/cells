@@ -46,6 +46,8 @@ const state = {
   recoveries: 0,
   /** A recovery happened and nothing has changed since, so another blow-up means the setup itself is unstable. */
   recentRecovery: false,
+  /** Lattice steps run since the last recovery, independent of resets. */
+  stepsSinceRecovery: 0,
   solver: null as Solver | null,
   W: 0,
   H: 0,
@@ -139,6 +141,7 @@ function recoverFromBlowup(message: string, repeatMessage: string) {
   resetFlow();
   state.recoveries++;
   state.recentRecovery = true;
+  state.stepsSinceRecovery = 0;
   if (repeat) {
     if (!state.paused) $('pause').click();
     showToast(repeatMessage, true);
@@ -301,6 +304,7 @@ input('brush').addEventListener('input', () => ($('brushOut').textContent = inpu
 addEventListener('resize', layout);
 const chartCanvas = $('chart');
 (window as unknown as { flowResets: () => number }).flowResets = () => state.recoveries;
+(window as unknown as { solverStep: () => number }).solverStep = () => state.solver?.step ?? 0;
 /** Test hook: what the pointer has drawn, so tests can tell whether a canvas press acted. */
 (window as unknown as { interactionState: () => string }).interactionState = () => JSON.stringify(state.drawnBox);
 initMenu(() => chart.invalidate());
@@ -361,10 +365,11 @@ function frame(now: number) {
   const frameMs = now - lastFrameTime;
   lastFrameTime = now;
   state.frames++;
-  if (state.recentRecovery && solver.step > REPEAT_STEPS) state.recentRecovery = false;
   // Paused frames measure nothing; tuning on a stale cost would drift toward MAX_SPF.
   if (!state.paused) tuneSteps(frameMs);
   const n = state.paused ? 0 : state.spf;
+  state.stepsSinceRecovery += n;
+  if (state.recentRecovery && state.stepsSinceRecovery > REPEAT_STEPS) state.recentRecovery = false;
 
   const t = Math.min(1, (solver.step - state.rampFrom) / RAMP_STEPS);
   const uIn = settings().u * t * t * (3 - 2 * t);

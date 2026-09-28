@@ -33,8 +33,10 @@ test('2D recovers from a blown-up flow and keeps the drawing', async ({ page }) 
   await expect(page.locator('#pause')).toHaveAttribute('aria-label', 'Run', { timeout: 30_000 });
   await expect(toast).toContainText("so it's paused");
   expect(await resets()).toBeGreaterThanOrEqual(2);
-  const stepPaused = await page.evaluate(() => document.getElementById('step')!.textContent);
+  // The reset happens just before the pause, so the paused solver sits at step 0; without a reset it keeps its pre-blow-up step.
+  const solverStep = () => page.evaluate(() => (window as unknown as { solverStep: () => number }).solverStep());
+  expect(await solverStep()).toBe(0);
   await page.waitForTimeout(1000);
-  expect(await page.evaluate(() => document.getElementById('step')!.textContent)).toBe(stepPaused);
+  expect(await solverStep()).toBe(0);
   await expect(toast).toBeVisible();
 });

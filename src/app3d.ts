@@ -48,6 +48,8 @@ const state = {
   recoveries: 0,
   /** A recovery happened and nothing has changed since, so another blow-up means the setup itself is unstable. */
   recentRecovery: false,
+  /** Lattice steps run since the last recovery, independent of resets. */
+  stepsSinceRecovery: 0,
   solver: null as Solver3D | null,
   camera: null as OrbitCamera | null,
   paused: false,
@@ -140,6 +142,7 @@ function recoverFromBlowup(message: string, repeatMessage: string) {
   resetFlow();
   state.recoveries++;
   state.recentRecovery = true;
+  state.stepsSinceRecovery = 0;
   if (repeat) {
     if (!state.paused) $('pause').click();
     showToast(repeatMessage, true);
@@ -294,10 +297,11 @@ function frame(now: number) {
   const frameMs = now - lastFrameTime;
   lastFrameTime = now;
   state.frames++;
-  if (state.recentRecovery && solver.step > REPEAT_STEPS) state.recentRecovery = false;
   // Paused frames measure nothing; tuning on a stale cost would drift toward MAX_SPF.
   if (!state.paused) tuneSteps(frameMs);
   const n = state.paused ? 0 : state.spf;
+  state.stepsSinceRecovery += n;
+  if (state.recentRecovery && state.stepsSinceRecovery > REPEAT_STEPS) state.recentRecovery = false;
 
   const t = Math.min(1, (solver.step - state.rampFrom) / RAMP_STEPS);
   solver.setInlet(U_TARGET * t * t * (3 - 2 * t));
@@ -412,6 +416,7 @@ const hook = {
 
 const chartCanvas = $('chart');
 (window as unknown as { flowResets: () => number }).flowResets = () => state.recoveries;
+(window as unknown as { solverStep: () => number }).solverStep = () => state.solver?.step ?? 0;
 /** Test hook: the camera angles, so tests can tell whether a canvas press orbited. */
 (window as unknown as { interactionState: () => string }).interactionState = () => JSON.stringify([state.camera?.yaw, state.camera?.pitch]);
 initMenu(() => chart.invalidate());
