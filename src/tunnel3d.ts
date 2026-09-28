@@ -83,3 +83,11 @@ export function nextStepsPerFrame(spf: number, budgetRatio: number): number {
   if (budgetRatio > 1 && next <= spf) next = spf + 1;
   return Math.min(MAX_SPF, Math.max(1, next));
 }
+
+/** Simulation time per frame the tuner aims for: 0.85 of a 60 Hz frame, whatever the display's refresh rate. */
+export const FRAME_BUDGET_MS = 0.85 * 16.7;
+
+/** Steps per frame for the fixed budget; costMs is GPU compute time when timestamps measure it, otherwise frame time. */
+export function tuneStepsPerFrame(spf: number, costMs: number): number {
+  return nextStepsPerFrame(spf, FRAME_BUDGET_MS / Math.max(0.5, costMs));
+}

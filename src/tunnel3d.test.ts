@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest';
 import { FAR } from './geometry';
-import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, nextStepsPerFrame } from './tunnel3d';
+import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, nextStepsPerFrame, tuneStepsPerFrame, FRAME_BUDGET_MS } from './tunnel3d';
 
 const small = { maxStorageBufferBindingSize: 128 * 2 ** 20, maxBufferSize: 256 * 2 ** 20 };
 const tiny = { maxStorageBufferBindingSize: 2 ** 20, maxBufferSize: 2 ** 20 };
@@ -58,4 +58,12 @@ test('steps per frame can grow from small values', () => {
   expect(nextStepsPerFrame(20, 1)).toBe(20);
   expect(nextStepsPerFrame(400, 2)).toBe(400);
   expect(nextStepsPerFrame(1, 0.1)).toBe(1);
+});
+
+test('tuner targets a fixed budget of 0.85 x 16.7 ms', () => {
+  expect(FRAME_BUDGET_MS).toBeCloseTo(14.195, 6);
+  expect(tuneStepsPerFrame(1, 0.5)).toBe(2);
+  expect(tuneStepsPerFrame(10, 7)).toBe(11);
+  expect(tuneStepsPerFrame(10, 14.195)).toBe(10);
+  expect(tuneStepsPerFrame(20, 28.39)).toBe(16);
 });

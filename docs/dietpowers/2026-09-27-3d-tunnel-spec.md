@@ -39,7 +39,8 @@ Plan 2 builds on the interfaces this spec fixes for plan 1 and doesn't change th
   - The outlet sponge covers the last 15% of x, with `absorb` 0.02.
   - No inlet layer.
 - Obstacles sit at x = W/4, centered in y and z.
-- Adaptive steps per frame fill 0.85 of the display frame interval, capped at 400, as `app.ts` does. Forces are sampled every 4 steps.
+- Adaptive steps per frame target a fixed 0.85 × 16.7 ms (14.2 ms) of simulation time per frame, whatever the display's refresh rate. The time is measured with GPU timestamps, or as frame time when those are missing. They are capped at 400, on both pages. Forces are sampled every 4 steps.
+  > **Changed 2026-09-27:** adaptive steps per frame target a fixed compute budget; previously they filled 0.85 of an estimated display frame interval. Why: every estimate of the display interval tried (shortest frame, 20th percentile, fall-fast-rise-slow) was fooled by some timing pattern (catch-up frames, sustained slowdowns, startup jitter) and dropped the live 2D page to 1 step per frame or locked it at 30 fps. A fixed budget has nothing to infer. On a 120 Hz display this runs near 60 fps at full simulation speed. A 12 ms budget was tried first and measured 404–457 steps/s, failing criterion 5; 14 ms measured 484–523, so the budget is 0.85 × 16.7 ms, the old rule's value at 60 Hz. Approved by the partner on 2026-09-27.
 - Tracers: 16,384 particles.
 - FP16 check (`sphereFp16`) acceptance, fixed now, before the first run: |C_D,FP16 − C_D,FP32| / C_D,FP32 ≤ 1%.
 - No runtime dependencies. TypeScript and Vite, as today.

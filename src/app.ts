@@ -7,6 +7,7 @@ import { periodFromCrossings, mean } from './analysis';
 import { Renderer, ViewMode, TracerMode } from './render';
 import { ForceChart } from './chart';
 import { initMenu, isShown } from './menu';
+import { tuneStepsPerFrame } from './tunnel3d';
 import { icon } from './icons';
 
 type Obstacle = 'cylinder' | 'naca' | 'square' | 'plate' | 'none';
@@ -17,9 +18,6 @@ const select = (id: string) => $<HTMLSelectElement>(id);
 
 const RAMP_STEPS = 3000;
 const FORCE_EVERY = 4;
-/** Fraction of the display frame interval given to simulation compute. */
-const FRAME_BUDGET = 0.85;
-const MAX_SPF = 400;
 /** Default reference length as a fraction of the grid height. */
 const DEFAULT_SIZE: Record<Obstacle, number> = { cylinder: 0.1, naca: 0.25, square: 0.1, plate: 0.12, none: 0.1 };
 
@@ -56,7 +54,6 @@ const state = {
   probeValue: '',
   gpuMs: 0,
   frames: 0,
-  interval: 16.7,
 };
 
 function settings() {
@@ -308,17 +305,8 @@ function tuneSteps(frameMs: number) {
     state.spf = Number(mode);
     return;
   }
-  // Track the display's frame interval (60 Hz, 120 Hz...) as the shortest recent frame.
-  state.interval = Math.min(Math.max(state.interval * 1.002, 4), Math.max(frameMs, 4));
-  if (frameMs > 1.5 * state.interval) {
-    state.spf = Math.max(1, Math.floor(state.spf * 0.85));
-    return;
-  }
-  // Fill most of the frame: a partly idle GPU gets down-clocked, which makes each step slower.
-  const budget = FRAME_BUDGET * state.interval;
-  const cost = state.gpuMs > 0 ? state.gpuMs : frameMs - 3;
-  const ratio = budget / Math.max(0.5, cost);
-  state.spf = Math.round(Math.min(MAX_SPF, Math.max(1, state.spf * Math.min(1.1, Math.max(0.8, ratio)))));
+  // A fixed budget, whatever the display rate: GPU time when timestamps have measured it, frame time otherwise.
+  state.spf = tuneStepsPerFrame(state.spf, state.gpuMs > 0 ? state.gpuMs : frameMs - 3);
 }
 
 function updateStats() {
@@ -350,7 +338,8 @@ function frame(now: number) {
   const frameMs = now - lastFrameTime;
   lastFrameTime = now;
   state.frames++;
-  tuneSteps(frameMs);
+  // Paused frames measure nothing; tuning on a stale cost would drift toward MAX_SPF.
+  if (!state.paused) tuneSteps(frameMs);
   const n = state.paused ? 0 : state.spf;
 
   const t = Math.min(1, (solver.step - state.rampFrom) / RAMP_STEPS);

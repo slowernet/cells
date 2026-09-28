@@ -7,7 +7,7 @@ import { initMenu, isShown } from './menu';
 import { icon } from './icons';
 import { OrbitCamera, invert } from './camera3d';
 import { Renderer3D } from './render3d';
-import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, nextStepsPerFrame, type PresetName } from './tunnel3d';
+import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, tuneStepsPerFrame, type PresetName } from './tunnel3d';
 import type { Obstacle3 } from './geometry3d';
 import type { Vec3 } from './camera3d';
 
@@ -18,8 +18,6 @@ const select = (id: string) => $<HTMLSelectElement>(id);
 const U_TARGET = 0.1;
 const RAMP_STEPS = 3000;
 const FORCE_EVERY = 4;
-/** Fraction of the display frame interval given to simulation compute. */
-const FRAME_BUDGET = 0.85;
 
 const canvas = $<HTMLCanvasElement>('view');
 
@@ -56,7 +54,6 @@ const state = {
   bounds: null as [Vec3, Vec3] | null,
   gpuMs: 0,
   frames: 0,
-  interval: 16.7,
   rate: { t: 0, step: 0, value: 0 },
 };
 
@@ -254,16 +251,8 @@ let lastFrameTime = performance.now();
 let forcesInFlight = false;
 
 function tuneSteps(frameMs: number) {
-  // Track the display's frame interval (60 Hz, 120 Hz...) as the shortest recent frame.
-  state.interval = Math.min(Math.max(state.interval * 1.002, 4), Math.max(frameMs, 4));
-  if (frameMs > 1.5 * state.interval) {
-    state.spf = Math.max(1, Math.floor(state.spf * 0.85));
-    return;
-  }
-  // Fill most of the frame: a partly idle GPU gets down-clocked, which makes each step slower.
-  const budget = FRAME_BUDGET * state.interval;
-  const cost = state.gpuMs > 0 ? state.gpuMs : frameMs - 3;
-  state.spf = nextStepsPerFrame(state.spf, budget / Math.max(0.5, cost));
+  // A fixed budget, whatever the display rate: GPU time when timestamps have measured it, frame time otherwise.
+  state.spf = tuneStepsPerFrame(state.spf, state.gpuMs > 0 ? state.gpuMs : frameMs - 3);
 }
 
 function updateStats() {
