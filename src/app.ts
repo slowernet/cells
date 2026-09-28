@@ -7,7 +7,7 @@ import { periodFromCrossings, mean } from './analysis';
 import { Renderer, ViewMode, TracerMode } from './render';
 import { ForceChart } from './chart';
 import { initMenu, isShown } from './menu';
-import { nextStepsPerFrame } from './tunnel3d';
+import { nextStepsPerFrame, FrameInterval } from './tunnel3d';
 import { icon } from './icons';
 
 type Obstacle = 'cylinder' | 'naca' | 'square' | 'plate' | 'none';
@@ -302,14 +302,17 @@ let lastFrameTime = performance.now();
 let forcesInFlight = false;
 let probeInFlight = false;
 
+const frameInterval = new FrameInterval();
+
 function tuneSteps(frameMs: number) {
   const mode = select('spfMode').value;
   if (mode !== 'auto') {
     state.spf = Number(mode);
     return;
   }
-  // Track the display's frame interval (60 Hz, 120 Hz...) as the shortest recent frame.
-  state.interval = Math.min(Math.max(state.interval * 1.002, 4), Math.max(frameMs, 4));
+  // Track the display's frame interval (60 Hz, 120 Hz...) robustly: one catch-up frame used to collapse it and pin the step count at 1.
+  frameInterval.push(frameMs);
+  state.interval = frameInterval.value;
   if (frameMs > 1.5 * state.interval) {
     state.spf = Math.max(1, Math.floor(state.spf * 0.85));
     return;

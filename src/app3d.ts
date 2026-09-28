@@ -7,7 +7,7 @@ import { initMenu, isShown } from './menu';
 import { icon } from './icons';
 import { OrbitCamera, invert } from './camera3d';
 import { Renderer3D } from './render3d';
-import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, nextStepsPerFrame, type PresetName } from './tunnel3d';
+import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, nextStepsPerFrame, FrameInterval, type PresetName } from './tunnel3d';
 import type { Obstacle3 } from './geometry3d';
 import type { Vec3 } from './camera3d';
 
@@ -253,9 +253,12 @@ const stagingPool: GPUBuffer[] = querySet
 let lastFrameTime = performance.now();
 let forcesInFlight = false;
 
+const frameInterval = new FrameInterval();
+
 function tuneSteps(frameMs: number) {
-  // Track the display's frame interval (60 Hz, 120 Hz...) as the shortest recent frame.
-  state.interval = Math.min(Math.max(state.interval * 1.002, 4), Math.max(frameMs, 4));
+  // Track the display's frame interval (60 Hz, 120 Hz...) robustly: one catch-up frame used to collapse it and pin the step count at 1.
+  frameInterval.push(frameMs);
+  state.interval = frameInterval.value;
   if (frameMs > 1.5 * state.interval) {
     state.spf = Math.max(1, Math.floor(state.spf * 0.85));
     return;

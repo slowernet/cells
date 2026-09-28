@@ -83,3 +83,19 @@ export function nextStepsPerFrame(spf: number, budgetRatio: number): number {
   if (budgetRatio > 1 && next <= spf) next = spf + 1;
   return Math.min(MAX_SPF, Math.max(1, next));
 }
+
+/** The display's frame interval as the 20th percentile of the last 60 frame times, so one short or long frame can't move it. */
+export class FrameInterval {
+  private samples: number[] = [];
+
+  push(ms: number) {
+    this.samples.push(Math.min(100, Math.max(4, ms)));
+    if (this.samples.length > 60) this.samples.shift();
+  }
+
+  get value(): number {
+    if (this.samples.length < 5) return 16.7;
+    const sorted = [...this.samples].sort((a, b) => a - b);
+    return sorted[Math.floor(0.2 * (sorted.length - 1))];
+  }
+}
