@@ -6,8 +6,8 @@ import { deriveTau, maxReynolds } from './units';
 import { periodFromCrossings, mean } from './analysis';
 import { Renderer, ViewMode, TracerMode } from './render';
 import { ForceChart } from './chart';
-import { initMenu, isShown } from './menu';
-import { tuneStepsPerFrame } from './tunnel3d';
+import { initMenu, isShown, showToast } from './menu';
+import { tuneStepsPerFrame, hasDiverged, fieldDiverged } from './tunnel3d';
 import { icon } from './icons';
 
 type Obstacle = 'cylinder' | 'naca' | 'square' | 'plate' | 'none';
@@ -42,6 +42,14 @@ await renderer.init();
 const chart = new ForceChart($<HTMLCanvasElement>('chart'), $('chartTip'));
 
 const state = {
+  /** Blow-ups recovered from since load, for tests. */
+  recoveries: 0,
+  /** A recovery happened and nothing has changed since, so another blow-up means the setup itself is unstable. */
+  recentRecovery: false,
+  /** Lattice steps run since the last recovery, independent of resets. */
+  stepsSinceRecovery: 0,
+  /** Bumped on every flow reset, so field readings taken before a reset are ignored. */
+  flowGen: 0,
   solver: null as Solver | null,
   W: 0,
   H: 0,
@@ -85,6 +93,7 @@ function physics() {
 }
 
 function applyPhysics() {
+  state.recentRecovery = false;
   const solver = state.solver;
   if (!solver) return;
   const { tau, clamped, effectiveRe, mach, s } = physics();
@@ -116,7 +125,8 @@ function buildSdf(W: number, H: number) {
     case 'naca': addPolygon(sdf, W, H, nacaPolygon(cx - L / 3, cy, L, 0.12, s.angle)); break;
     case 'none': break;
   }
-  state.lRef = s.obstacle === 'none' ? 1 : L;
+  // Without a body, tau still comes from the size setting: L = 1 put tau at the stability clamp.
+  state.lRef = L;
   state.drawnBox = null;
   return sdf;
 }
@@ -126,7 +136,27 @@ function resetForces() {
   chart.clear();
 }
 
+const BLOWUP_MESSAGE =
+  'The flow became unstable: the local speed near an obstacle exceeded what the lattice can represent. Try a lower lattice speed, a smaller obstacle, or more room around it.';
+const BLOWUP_REPEAT = "The flow keeps becoming unstable with this setup, so it's paused. Change the obstacle or lower the speed, then press play.";
+
+/** Repeat blow-ups within this many steps of a recovery pause the flow instead of looping. */
+const REPEAT_STEPS = 10_000;
+
+function recoverFromBlowup(message: string, repeatMessage: string) {
+  const repeat = state.recentRecovery;
+  resetFlow();
+  state.recoveries++;
+  state.recentRecovery = true;
+  state.stepsSinceRecovery = 0;
+  if (repeat) {
+    if (!state.paused) $('pause').click();
+    showToast(repeatMessage, true);
+  } else showToast(message);
+}
+
 function resetFlow() {
+  state.flowGen++;
   const solver = state.solver!;
   solver.initField();
   state.rampFrom = 0;
@@ -137,6 +167,7 @@ function resetFlow() {
 let rebuildToken = 0;
 
 async function rebuild() {
+  state.recentRecovery = false;
   const token = ++rebuildToken;
   const s = settings();
   state.solver?.destroy();
@@ -205,6 +236,7 @@ function tool() {
 
 let last: [number, number] | null = null;
 function paint(e: PointerEvent) {
+  state.recentRecovery = false;
   const solver = state.solver;
   if (!solver) return;
   const p = toGrid(e);
@@ -257,6 +289,7 @@ select('obstacle').addEventListener('change', () => {
 for (const id of ['size', 'angle']) input(id).addEventListener('input', () => resetBody());
 
 function resetBody() {
+  state.recentRecovery = false;
   const solver = state.solver;
   if (!solver) return;
   $('sizeOut').textContent = input('size').value;
@@ -278,6 +311,8 @@ $('resetBody').addEventListener('click', resetBody);
 input('brush').addEventListener('input', () => ($('brushOut').textContent = input('brush').value));
 addEventListener('resize', layout);
 const chartCanvas = $('chart');
+(window as unknown as { flowResets: () => number }).flowResets = () => state.recoveries;
+(window as unknown as { solverStep: () => number }).solverStep = () => state.solver?.step ?? 0;
 /** Test hook: what the pointer has drawn, so tests can tell whether a canvas press acted. */
 (window as unknown as { interactionState: () => string }).interactionState = () => JSON.stringify(state.drawnBox);
 initMenu(() => chart.invalidate());
@@ -297,6 +332,7 @@ const stagingPool: GPUBuffer[] = querySet
   : [];
 let lastFrameTime = performance.now();
 let forcesInFlight = false;
+let fieldInFlight = false;
 let probeInFlight = false;
 
 function tuneSteps(frameMs: number) {
@@ -341,6 +377,8 @@ function frame(now: number) {
   // Paused frames measure nothing; tuning on a stale cost would drift toward MAX_SPF.
   if (!state.paused) tuneSteps(frameMs);
   const n = state.paused ? 0 : state.spf;
+  state.stepsSinceRecovery += n;
+  if (state.recentRecovery && state.stepsSinceRecovery > REPEAT_STEPS) state.recentRecovery = false;
 
   const t = Math.min(1, (solver.step - state.rampFrom) / RAMP_STEPS);
   const uIn = settings().u * t * t * (3 - 2 * t);
@@ -392,7 +430,10 @@ function frame(now: number) {
     const u = uRef();
     const scale = 2 / (u * u * state.lRef);
     solver.readForces().then((samples) => {
-      if (solver === state.solver) for (const f of samples) chart.push(f.step, f.fx * scale, f.fy * scale);
+      if (solver === state.solver && hasDiverged(samples)) {
+        // Once NaN appears every later step stays NaN: restart the flow, keeping the obstacles and settings.
+        recoverFromBlowup(BLOWUP_MESSAGE, BLOWUP_REPEAT);
+      } else if (solver === state.solver) for (const f of samples) chart.push(f.step, f.fx * scale, f.fy * scale);
       forcesInFlight = false;
       updateStats();
     });
@@ -409,6 +450,15 @@ function frame(now: number) {
         probeInFlight = false;
       });
     }
+  }
+  // Forces are zero without an obstacle, so also watch a row of the field; a reading from before the latest reset is ignored.
+  if (!fieldInFlight && state.frames % 15 === 0) {
+    fieldInFlight = true;
+    const gen = state.flowGen;
+    readBuffer(device, solver.macro, Math.floor(state.H / 2) * state.W * 16, state.W * 16).then((buf) => {
+      fieldInFlight = false;
+      if (solver === state.solver && gen === state.flowGen && fieldDiverged(new Float32Array(buf))) recoverFromBlowup(BLOWUP_MESSAGE, BLOWUP_REPEAT);
+    });
   }
   if (state.frames % 10 === 0) {
     $('step').textContent = solver.step.toLocaleString();

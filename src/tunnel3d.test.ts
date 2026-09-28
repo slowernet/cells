@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest';
 import { FAR } from './geometry';
-import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, nextStepsPerFrame, tuneStepsPerFrame, FRAME_BUDGET_MS } from './tunnel3d';
+import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, nextStepsPerFrame, tuneStepsPerFrame, FRAME_BUDGET_MS, hasDiverged, fieldDiverged } from './tunnel3d';
 
 const small = { maxStorageBufferBindingSize: 128 * 2 ** 20, maxBufferSize: 256 * 2 ** 20 };
 const tiny = { maxStorageBufferBindingSize: 2 ** 20, maxBufferSize: 2 ** 20 };
@@ -38,7 +38,8 @@ test('buildBody cube bounds grow with rotation', () => {
 
 test('buildBody none', () => {
   const b = buildBody({ obstacle: 'none', sizeFraction: 0.2, angleDeg: 0 }, 16, 8, 8);
-  expect(b.lRef).toBe(1);
+  // Tau comes from the size setting even without a body; L = 1 put tau at the stability clamp.
+  expect(b.lRef).toBeCloseTo(0.2 * 8, 12);
   expect(b.area).toBe(0);
   expect(b.bounds).toBeNull();
   expect(b.sdf.every((v) => v === FAR)).toBe(true);
@@ -66,4 +67,18 @@ test('tuner targets a fixed budget of 0.85 x 16.7 ms', () => {
   expect(tuneStepsPerFrame(10, 7)).toBe(11);
   expect(tuneStepsPerFrame(10, 14.195)).toBe(10);
   expect(tuneStepsPerFrame(20, 28.39)).toBe(16);
+});
+
+test('divergence is any non-finite force sample', () => {
+  expect(hasDiverged([])).toBe(false);
+  expect(hasDiverged([{ fx: 1, fy: -2 }, { fx: 1e30, fy: 0, fz: 3 }])).toBe(false);
+  expect(hasDiverged([{ fx: 1, fy: 2 }, { fx: NaN, fy: 0 }])).toBe(true);
+  expect(hasDiverged([{ fx: 1, fy: Infinity }])).toBe(true);
+  expect(hasDiverged([{ fx: 1, fy: 2, fz: -Infinity }])).toBe(true);
+});
+
+test('a field row with any non-finite value has diverged', () => {
+  expect(fieldDiverged(new Float32Array([1, 0.1, 0, 0, 1, 0.1, 0, 0]))).toBe(false);
+  expect(fieldDiverged(new Float32Array([1, 0.1, NaN, 0]))).toBe(true);
+  expect(fieldDiverged(new Float32Array([Infinity, 0, 0, 0]))).toBe(true);
 });

@@ -134,7 +134,9 @@ fn advect(@builtin(global_invocation_id) g: vec3u) {
   let q = p + V.steps * v2.xy;
   let maxAge = select(80.0 + 80.0 * hash(seed + 7u), 1e9, V.tracerMode == 2u);
   let out = q.x < 0.0 || q.y < 0.0 || q.x > f32(P.W) - 1.0 || q.y > f32(P.H) - 1.0;
-  if (out || v2.z > 0.5 || age > maxAge) {
+  // A particle that crossed a blown-up field is NaN or Inf; test the exponent bits, since WGSL may fold x != x away.
+  let lost = any((bitcast<vec2u>(q) & vec2u(0x7f800000u)) == vec2u(0x7f800000u));
+  if (out || lost || v2.z > 0.5 || age > maxAge) {
     if (V.tracerMode == 2u) {
       // Streaklines: release from a rake of fixed seed points near the inlet.
       let rakes = 24u;
