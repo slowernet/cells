@@ -42,7 +42,8 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
   - The outlet sponge covers the last 15% of x, with `absorb` 0.02.
   - No inlet layer.
 - Obstacles sit at x = W/4, centered in y and z.
-- Adaptive steps per frame fill 0.85 of the display frame interval, capped at 400, as `app.ts` does. Forces are sampled every 4 steps.
+- Adaptive steps per frame target a fixed 0.85 × 16.7 ms (14.2 ms) of simulation time per frame, whatever the display's refresh rate. The time is measured with GPU timestamps, or as frame time when those are missing. They are capped at 400, on both pages. Forces are sampled every 4 steps.
+  > See the spec's Changed note on adaptive steps per frame (2026-09-27).
 - Tracers: 16,384 particles.
 - FP16 check (`sphereFp16`) acceptance, fixed now, before the first run: |C_D,FP16 − C_D,FP32| / C_D,FP32 ≤ 1%.
 - No runtime dependencies. TypeScript and Vite, as today.
@@ -357,3 +358,18 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 - **Files**: modify `3d.html`, `src/view3d.ts`, `src/view3d.test.ts`, `src/render3d.ts`, `src/app3d.ts` and `tests/tunnel3d.spec.ts`.
 - **Behavior**, following the spec's slice-off change: `#sliceAxis` gains `off`. View3 gains a CPU-side `slice` flag that isn't packed into the uniform, and `Renderer3D.encode` skips the slice draw when it is false. The slice position slider is disabled while the slice is off.
 - **Tests**: `slice axis off hides the slice`. With tracers off, the drawn pixel count falls below half: it measured 123,849 with the slice and 6,299 without.
+
+### - [x] Task 12: Fixed compute budget for the step tuner (both pages)
+
+- **Files**: modify `src/tunnel3d.ts`, `src/tunnel3d.test.ts`, `src/app.ts` and `src/app3d.ts`.
+- **Interfaces produced**:
+  - `FRAME_BUDGET_MS = 0.85 × 16.7`.
+  - `tuneStepsPerFrame(spf, costMs): number` returns `nextStepsPerFrame(spf, FRAME_BUDGET_MS / max(0.5, costMs))`.
+  - `FrameInterval` and the pages' `state.interval` are removed.
+- **Behavior**: both pages call `tuneStepsPerFrame` each running frame (not while paused, and not in the 2D manual modes). The cost is the smoothed GPU compute time when a timestamp reading exists, and `frameMs − 3` otherwise. The slow-frame branch that compared a frame against 1.5 × the interval estimate is removed; an over-budget cost already shrinks steps by up to ×0.8 per frame.
+- **Tests**:
+  - unit tests for `tuneStepsPerFrame`: it grows from 1 under budget, shrinks over budget and holds at the budget;
+  - `tests/tuner.spec.ts` passes 20 of 20 repeats;
+  - the menu and 3D page suites pass;
+  - the throughput test holds ≥ 480 steps/s.
+- Checked: `tuner.spec` passes 20 of 20; the menu and 3D suites pass (19); throughput measured 536 and 551 steps/s; 65 unit tests pass. A 12 ms budget measured 404–457 steps/s and was dropped, as recorded in the spec's Changed note.

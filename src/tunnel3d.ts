@@ -84,18 +84,10 @@ export function nextStepsPerFrame(spf: number, budgetRatio: number): number {
   return Math.min(MAX_SPF, Math.max(1, next));
 }
 
-/** The display's frame interval as the 20th percentile of the last 60 frame times, so one short or long frame can't move it. */
-export class FrameInterval {
-  private samples: number[] = [];
+/** Simulation time per frame the tuner aims for: 0.85 of a 60 Hz frame, whatever the display's refresh rate. */
+export const FRAME_BUDGET_MS = 0.85 * 16.7;
 
-  push(ms: number) {
-    this.samples.push(Math.min(100, Math.max(4, ms)));
-    if (this.samples.length > 60) this.samples.shift();
-  }
-
-  get value(): number {
-    if (this.samples.length < 5) return 16.7;
-    const sorted = [...this.samples].sort((a, b) => a - b);
-    return sorted[Math.floor(0.2 * (sorted.length - 1))];
-  }
+/** Steps per frame for the fixed budget; costMs is GPU compute time when timestamps measure it, otherwise frame time. */
+export function tuneStepsPerFrame(spf: number, costMs: number): number {
+  return nextStepsPerFrame(spf, FRAME_BUDGET_MS / Math.max(0.5, costMs));
 }

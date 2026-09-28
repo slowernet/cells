@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest';
 import { FAR } from './geometry';
-import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, nextStepsPerFrame, FrameInterval } from './tunnel3d';
+import { presetsThatFit, fallbackPreset, nextSmaller, buildBody, coefficientScale, nextStepsPerFrame, tuneStepsPerFrame, FRAME_BUDGET_MS } from './tunnel3d';
 
 const small = { maxStorageBufferBindingSize: 128 * 2 ** 20, maxBufferSize: 256 * 2 ** 20 };
 const tiny = { maxStorageBufferBindingSize: 2 ** 20, maxBufferSize: 2 ** 20 };
@@ -60,26 +60,10 @@ test('steps per frame can grow from small values', () => {
   expect(nextStepsPerFrame(1, 0.1)).toBe(1);
 });
 
-test('frame interval ignores a single short catch-up frame', () => {
-  const f = new FrameInterval();
-  for (let i = 0; i < 60; i++) f.push(16.7);
-  f.push(6);
-  expect(f.value).toBeCloseTo(16.7, 6);
-});
-
-test('frame interval ignores occasional slow frames', () => {
-  const f = new FrameInterval();
-  for (let i = 0; i < 60; i++) f.push(i % 10 === 0 ? 50 : 16.7);
-  expect(f.value).toBeCloseTo(16.7, 6);
-});
-
-test('frame interval follows a 120 Hz display within a second', () => {
-  const f = new FrameInterval();
-  for (let i = 0; i < 60; i++) f.push(16.7);
-  for (let i = 0; i < 60; i++) f.push(8.33);
-  expect(f.value).toBeCloseTo(8.33, 6);
-});
-
-test('frame interval defaults to 60 Hz before it has samples', () => {
-  expect(new FrameInterval().value).toBeCloseTo(16.7, 6);
+test('tuner targets a fixed budget of 0.85 x 16.7 ms', () => {
+  expect(FRAME_BUDGET_MS).toBeCloseTo(14.195, 6);
+  expect(tuneStepsPerFrame(1, 0.5)).toBe(2);
+  expect(tuneStepsPerFrame(10, 7)).toBe(11);
+  expect(tuneStepsPerFrame(10, 14.195)).toBe(10);
+  expect(tuneStepsPerFrame(20, 28.39)).toBe(16);
 });
