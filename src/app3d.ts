@@ -44,6 +44,10 @@ function showError(text: string) {
 }
 
 const state = {
+  /** Blow-ups recovered from since load, for tests. */
+  recoveries: 0,
+  /** A recovery happened and nothing has changed since, so another blow-up means the setup itself is unstable. */
+  recentRecovery: false,
   solver: null as Solver3D | null,
   camera: null as OrbitCamera | null,
   paused: false,
@@ -88,6 +92,7 @@ function refreshPresets(precision: Precision) {
 }
 
 function applyPhysics() {
+  state.recentRecovery = false;
   const solver = state.solver;
   if (!solver) return;
   const s = settings();
@@ -110,6 +115,7 @@ function resetForces() {
 
 /** Swaps in the current obstacle; the flow keeps running, as the 2D resetBody does. */
 function resetBody() {
+  state.recentRecovery = false;
   const solver = state.solver;
   if (!solver) return;
   const s = settings();
@@ -126,7 +132,23 @@ function resetBody() {
   resetForces();
 }
 
+/** Repeat blow-ups within this many steps of a recovery pause the flow instead of looping. */
+const REPEAT_STEPS = 10_000;
+
+function recoverFromBlowup(message: string, repeatMessage: string) {
+  const repeat = state.recentRecovery;
+  resetFlow();
+  state.recoveries++;
+  state.recentRecovery = true;
+  if (repeat) {
+    if (!state.paused) $('pause').click();
+    showToast(repeatMessage, true);
+  } else showToast(message);
+}
+
 function resetFlow() {
+  // Start from rest: initField writes the equilibrium at the current inlet speed, and the ramp restarts from 0.
+  state.solver?.setInlet(0);
   state.solver?.initField();
   state.rampFrom = 0;
   resetForces();
@@ -136,6 +158,7 @@ let rebuildToken = 0;
 
 /** Rebuilds the solver; the grid note shows the caller's note plus any allocation fallbacks, or nothing. */
 async function rebuild(callerNote = '') {
+  state.recentRecovery = false;
   const token = ++rebuildToken;
   const s = settings();
   state.solver?.destroy();
@@ -271,6 +294,7 @@ function frame(now: number) {
   const frameMs = now - lastFrameTime;
   lastFrameTime = now;
   state.frames++;
+  if (state.recentRecovery && solver.step > REPEAT_STEPS) state.recentRecovery = false;
   // Paused frames measure nothing; tuning on a stale cost would drift toward MAX_SPF.
   if (!state.paused) tuneSteps(frameMs);
   const n = state.paused ? 0 : state.spf;
@@ -336,8 +360,10 @@ function frame(now: number) {
     solver.readForces().then((samples) => {
       if (solver === state.solver && hasDiverged(samples)) {
         // Once NaN appears every later step stays NaN: restart the flow, keeping the obstacle and settings.
-        resetFlow();
-        showToast('The flow became unstable: the local speed near the obstacle exceeded what the lattice can represent. Try a smaller obstacle or a lower Reynolds number.');
+        recoverFromBlowup(
+          'The flow became unstable: the local speed near the obstacle exceeded what the lattice can represent. Try a smaller obstacle or a lower Reynolds number.',
+          "The flow keeps becoming unstable with this setup, so it's paused. Change the obstacle or lower the Reynolds number, then press play.",
+        );
       } else if (solver === state.solver && scale > 0) for (const f of samples) chart.push(f.step, f.fx * scale, f.fy * scale);
       forcesInFlight = false;
       updateStats();
@@ -385,6 +411,7 @@ const hook = {
 (window as unknown as { tunnel3d: typeof hook }).tunnel3d = hook;
 
 const chartCanvas = $('chart');
+(window as unknown as { flowResets: () => number }).flowResets = () => state.recoveries;
 /** Test hook: the camera angles, so tests can tell whether a canvas press orbited. */
 (window as unknown as { interactionState: () => string }).interactionState = () => JSON.stringify([state.camera?.yaw, state.camera?.pitch]);
 initMenu(() => chart.invalidate());

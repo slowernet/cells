@@ -21,11 +21,20 @@ test('2D recovers from a blown-up flow and keeps the drawing', async ({ page }) 
   const drawn = await page.evaluate(() => (window as unknown as { interactionState: () => string }).interactionState());
   expect(drawn).not.toBe('null');
 
+  const resets = () => page.evaluate(() => (window as unknown as { flowResets: () => number }).flowResets());
   const toast = page.locator('.toast');
   await expect(toast).toBeVisible({ timeout: 30_000 });
   await expect(toast).toContainText('The flow became unstable');
-  // The flow restarted from the inflow state with the drawing kept.
-  await expect.poll(() => page.evaluate(() => Number((document.getElementById('step')!.textContent ?? '0').replace(/\D/g, '')))).toBeLessThan(20_000);
+  // The first blow-up resets the flow and keeps the drawing.
+  expect(await resets()).toBeGreaterThanOrEqual(1);
   expect(await page.evaluate(() => (window as unknown as { interactionState: () => string }).interactionState())).toBe(drawn);
-  await expect.poll(() => page.evaluate(() => Number(document.getElementById('cd')!.textContent)), { timeout: 10_000 }).not.toBeNaN();
+
+  // The same setup blows up again; the page resets once more and pauses instead of looping.
+  await expect(page.locator('#pause')).toHaveAttribute('aria-label', 'Run', { timeout: 30_000 });
+  await expect(toast).toContainText("so it's paused");
+  expect(await resets()).toBeGreaterThanOrEqual(2);
+  const stepPaused = await page.evaluate(() => document.getElementById('step')!.textContent);
+  await page.waitForTimeout(1000);
+  expect(await page.evaluate(() => document.getElementById('step')!.textContent)).toBe(stepPaused);
+  await expect(toast).toBeVisible();
 });

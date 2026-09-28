@@ -54,8 +54,8 @@ export function isShown(el: Element): boolean {
 
 let toastTimer = 0;
 
-/** Shows a short message at the top centre for 8 s, or until clicked. */
-export function showToast(text: string) {
+/** Shows a message at the top centre for 8 s, or until clicked when persist is set. */
+export function showToast(text: string, persist = false) {
   let el = document.querySelector<HTMLElement>('.toast');
   if (!el) {
     el = document.createElement('div');
@@ -67,5 +67,5 @@ export function showToast(text: string) {
   el.textContent = text;
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => (el!.hidden = true), 8000);
+  if (!persist) toastTimer = window.setTimeout(() => (el!.hidden = true), 8000);
 }

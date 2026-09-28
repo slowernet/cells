@@ -232,7 +232,8 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
   top: calc(12px + env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
-  max-width: min(520px, calc(100vw - 96px));
+  /* Clear of the 40 px menu button 12 px from the right edge, on both sides for symmetry. */
+  max-width: min(520px, calc(100vw - 128px - env(safe-area-inset-left) - env(safe-area-inset-right)));
   padding: 10px 14px;
   background: #2a2112;
   border: 1px solid var(--warn);

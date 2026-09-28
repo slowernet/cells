@@ -42,6 +42,10 @@ await renderer.init();
 const chart = new ForceChart($<HTMLCanvasElement>('chart'), $('chartTip'));
 
 const state = {
+  /** Blow-ups recovered from since load, for tests. */
+  recoveries: 0,
+  /** A recovery happened and nothing has changed since, so another blow-up means the setup itself is unstable. */
+  recentRecovery: false,
   solver: null as Solver | null,
   W: 0,
   H: 0,
@@ -85,6 +89,7 @@ function physics() {
 }
 
 function applyPhysics() {
+  state.recentRecovery = false;
   const solver = state.solver;
   if (!solver) return;
   const { tau, clamped, effectiveRe, mach, s } = physics();
@@ -126,6 +131,20 @@ function resetForces() {
   chart.clear();
 }
 
+/** Repeat blow-ups within this many steps of a recovery pause the flow instead of looping. */
+const REPEAT_STEPS = 10_000;
+
+function recoverFromBlowup(message: string, repeatMessage: string) {
+  const repeat = state.recentRecovery;
+  resetFlow();
+  state.recoveries++;
+  state.recentRecovery = true;
+  if (repeat) {
+    if (!state.paused) $('pause').click();
+    showToast(repeatMessage, true);
+  } else showToast(message);
+}
+
 function resetFlow() {
   const solver = state.solver!;
   solver.initField();
@@ -137,6 +156,7 @@ function resetFlow() {
 let rebuildToken = 0;
 
 async function rebuild() {
+  state.recentRecovery = false;
   const token = ++rebuildToken;
   const s = settings();
   state.solver?.destroy();
@@ -205,6 +225,7 @@ function tool() {
 
 let last: [number, number] | null = null;
 function paint(e: PointerEvent) {
+  state.recentRecovery = false;
   const solver = state.solver;
   if (!solver) return;
   const p = toGrid(e);
@@ -257,6 +278,7 @@ select('obstacle').addEventListener('change', () => {
 for (const id of ['size', 'angle']) input(id).addEventListener('input', () => resetBody());
 
 function resetBody() {
+  state.recentRecovery = false;
   const solver = state.solver;
   if (!solver) return;
   $('sizeOut').textContent = input('size').value;
@@ -278,6 +300,7 @@ $('resetBody').addEventListener('click', resetBody);
 input('brush').addEventListener('input', () => ($('brushOut').textContent = input('brush').value));
 addEventListener('resize', layout);
 const chartCanvas = $('chart');
+(window as unknown as { flowResets: () => number }).flowResets = () => state.recoveries;
 /** Test hook: what the pointer has drawn, so tests can tell whether a canvas press acted. */
 (window as unknown as { interactionState: () => string }).interactionState = () => JSON.stringify(state.drawnBox);
 initMenu(() => chart.invalidate());
@@ -338,6 +361,7 @@ function frame(now: number) {
   const frameMs = now - lastFrameTime;
   lastFrameTime = now;
   state.frames++;
+  if (state.recentRecovery && solver.step > REPEAT_STEPS) state.recentRecovery = false;
   // Paused frames measure nothing; tuning on a stale cost would drift toward MAX_SPF.
   if (!state.paused) tuneSteps(frameMs);
   const n = state.paused ? 0 : state.spf;
@@ -394,8 +418,10 @@ function frame(now: number) {
     solver.readForces().then((samples) => {
       if (solver === state.solver && hasDiverged(samples)) {
         // Once NaN appears every later step stays NaN: restart the flow, keeping the obstacles and settings.
-        resetFlow();
-        showToast('The flow became unstable: the local speed near an obstacle exceeded what the lattice can represent. Try a lower lattice speed, a smaller obstacle, or more room around it.');
+        recoverFromBlowup(
+          'The flow became unstable: the local speed near an obstacle exceeded what the lattice can represent. Try a lower lattice speed, a smaller obstacle, or more room around it.',
+          "The flow keeps becoming unstable with this setup, so it's paused. Change the obstacle or lower the speed, then press play.",
+        );
       } else if (solver === state.solver) for (const f of samples) chart.push(f.step, f.fx * scale, f.fy * scale);
       forcesInFlight = false;
       updateStats();
