@@ -61,7 +61,8 @@ export function buildBody(body: Body3, W: number, H: number, D: number) {
       half = [L / 2, L / 2, 0.3 * D];
       break;
     case 'none':
-      return { sdf, lRef: 1, area: 0, bounds: null };
+      // No body, but tau still comes from the size setting: L = 1 put tau at the stability clamp.
+      return { sdf, lRef: L, area: 0, bounds: null };
   }
   const c: Vec3 = [cx, cy, cz];
   const dims: Vec3 = [W, H, D];
@@ -95,4 +96,10 @@ export function tuneStepsPerFrame(spf: number, costMs: number): number {
 /** True when any force sample is non-finite: the flow has blown up and every later step is NaN. */
 export function hasDiverged(samples: ReadonlyArray<{ fx: number; fy: number; fz?: number }>): boolean {
   return samples.some((f) => !Number.isFinite(f.fx) || !Number.isFinite(f.fy) || (f.fz !== undefined && !Number.isFinite(f.fz)));
+}
+
+/** True when a macro-field sample holds any non-finite value; catches blow-ups with no obstacle to measure forces on. */
+export function fieldDiverged(values: Float32Array): boolean {
+  for (const v of values) if (!Number.isFinite(v)) return true;
+  return false;
 }

@@ -7,7 +7,7 @@ import { periodFromCrossings, mean } from './analysis';
 import { Renderer, ViewMode, TracerMode } from './render';
 import { ForceChart } from './chart';
 import { initMenu, isShown, showToast } from './menu';
-import { tuneStepsPerFrame, hasDiverged } from './tunnel3d';
+import { tuneStepsPerFrame, hasDiverged, fieldDiverged } from './tunnel3d';
 import { icon } from './icons';
 
 type Obstacle = 'cylinder' | 'naca' | 'square' | 'plate' | 'none';
@@ -48,6 +48,8 @@ const state = {
   recentRecovery: false,
   /** Lattice steps run since the last recovery, independent of resets. */
   stepsSinceRecovery: 0,
+  /** Bumped on every flow reset, so field readings taken before a reset are ignored. */
+  flowGen: 0,
   solver: null as Solver | null,
   W: 0,
   H: 0,
@@ -123,7 +125,8 @@ function buildSdf(W: number, H: number) {
     case 'naca': addPolygon(sdf, W, H, nacaPolygon(cx - L / 3, cy, L, 0.12, s.angle)); break;
     case 'none': break;
   }
-  state.lRef = s.obstacle === 'none' ? 1 : L;
+  // Without a body, tau still comes from the size setting: L = 1 put tau at the stability clamp.
+  state.lRef = L;
   state.drawnBox = null;
   return sdf;
 }
@@ -132,6 +135,10 @@ function resetForces() {
   state.solver?.resetForces();
   chart.clear();
 }
+
+const BLOWUP_MESSAGE =
+  'The flow became unstable: the local speed near an obstacle exceeded what the lattice can represent. Try a lower lattice speed, a smaller obstacle, or more room around it.';
+const BLOWUP_REPEAT = "The flow keeps becoming unstable with this setup, so it's paused. Change the obstacle or lower the speed, then press play.";
 
 /** Repeat blow-ups within this many steps of a recovery pause the flow instead of looping. */
 const REPEAT_STEPS = 10_000;
@@ -149,6 +156,7 @@ function recoverFromBlowup(message: string, repeatMessage: string) {
 }
 
 function resetFlow() {
+  state.flowGen++;
   const solver = state.solver!;
   solver.initField();
   state.rampFrom = 0;
@@ -324,6 +332,7 @@ const stagingPool: GPUBuffer[] = querySet
   : [];
 let lastFrameTime = performance.now();
 let forcesInFlight = false;
+let fieldInFlight = false;
 let probeInFlight = false;
 
 function tuneSteps(frameMs: number) {
@@ -423,10 +432,7 @@ function frame(now: number) {
     solver.readForces().then((samples) => {
       if (solver === state.solver && hasDiverged(samples)) {
         // Once NaN appears every later step stays NaN: restart the flow, keeping the obstacles and settings.
-        recoverFromBlowup(
-          'The flow became unstable: the local speed near an obstacle exceeded what the lattice can represent. Try a lower lattice speed, a smaller obstacle, or more room around it.',
-          "The flow keeps becoming unstable with this setup, so it's paused. Change the obstacle or lower the speed, then press play.",
-        );
+        recoverFromBlowup(BLOWUP_MESSAGE, BLOWUP_REPEAT);
       } else if (solver === state.solver) for (const f of samples) chart.push(f.step, f.fx * scale, f.fy * scale);
       forcesInFlight = false;
       updateStats();
@@ -444,6 +450,15 @@ function frame(now: number) {
         probeInFlight = false;
       });
     }
+  }
+  // Forces are zero without an obstacle, so also watch a row of the field; a reading from before the latest reset is ignored.
+  if (!fieldInFlight && state.frames % 15 === 0) {
+    fieldInFlight = true;
+    const gen = state.flowGen;
+    readBuffer(device, solver.macro, Math.floor(state.H / 2) * state.W * 16, state.W * 16).then((buf) => {
+      fieldInFlight = false;
+      if (solver === state.solver && gen === state.flowGen && fieldDiverged(new Float32Array(buf))) recoverFromBlowup(BLOWUP_MESSAGE, BLOWUP_REPEAT);
+    });
   }
   if (state.frames % 10 === 0) {
     $('step').textContent = solver.step.toLocaleString();

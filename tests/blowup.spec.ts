@@ -40,3 +40,32 @@ test('2D recovers from a blown-up flow and keeps the drawing', async ({ page }) 
   expect(await solverStep()).toBe(0);
   await expect(toast).toBeVisible();
 });
+
+test('2D with no obstacle stays stable at the default Re', async ({ page }) => {
+  await page.goto('/index.html');
+  await page.waitForFunction(() => Number((document.getElementById('step')?.textContent ?? '0').replace(/\D/g, '')) > 0, null, { timeout: 60_000 });
+  await page.evaluate(() => {
+    const s = document.getElementById('obstacle') as HTMLSelectElement;
+    s.value = 'none';
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect(page.locator('#tauNote')).not.toContainText('L = 1 cells');
+  await page.waitForTimeout(10_000);
+  expect(await page.evaluate(() => (window as unknown as { flowResets: () => number }).flowResets())).toBe(0);
+});
+
+test('2D with no obstacle still detects a blow-up through the field check', async ({ page }) => {
+  await page.goto('/index.html');
+  await page.waitForFunction(() => Number((document.getElementById('step')?.textContent ?? '0').replace(/\D/g, '')) > 0, null, { timeout: 60_000 });
+  await page.evaluate(() => {
+    const s = document.getElementById('obstacle') as HTMLSelectElement;
+    s.value = 'none';
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+    // Re far past the ceiling clamps tau at 0.51, which is unstable with nothing to measure a force on.
+    const re = document.getElementById('re') as HTMLInputElement;
+    re.value = '1000000';
+    re.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(page.locator('.toast')).toBeVisible({ timeout: 30_000 });
+  expect(await page.evaluate(() => (window as unknown as { flowResets: () => number }).flowResets())).toBeGreaterThanOrEqual(1);
+});

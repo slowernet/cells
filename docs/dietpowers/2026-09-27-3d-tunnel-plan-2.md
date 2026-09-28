@@ -120,7 +120,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
     - cube: `addBox3` with half-extent L/2 in each axis, angle −angleDeg (nose up for positive angles, as the 2D square does).
     - cylinder: `addCylinderZ` with r = L/2.
     - wing: `addWing` with chord L, span 0.6·D, angle +angleDeg in radians.
-    - none: an empty SDF, lRef = 1, area = 0, bounds = null.
+    - none: an empty SDF, lRef = L (the size setting, so τ stays sensible without a body; see the spec's 2026-09-28 third change), area = 0, bounds = null.
     - `area = referenceArea(obstacle, L, D)`.
     - `bounds` is the body's axis-aligned box grown by 2 cells and clipped to the domain. The unclipped half-extents around the centre are:
       - sphere: L/2 on every axis;
@@ -139,7 +139,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
       - `fallbackPreset('high', 'fp16', …)` is `medium`;
       - with 1 MiB limits, the fallback is null.
     - `buildBody sphere`: the centre node is solid, lRef = 19.2 for fraction 0.2 at H = 96, area = π·19.2²/4, and the bounds contain the sphere with 2 cells of margin.
-    - `buildBody none`: lRef 1, area 0, bounds null, and every SDF value is `FAR`.
+    - `buildBody none`: lRef = sizeFraction · H, area 0, bounds null, and every SDF value is `FAR`.
     - `coefficientScale`: 2/(0.01·100) = 2 for u = 0.1, A = 100, and 0 for A = 0.
   - `src/solver3d.test.ts`, `setSmagorinsky writes smagC2`: after `setSmagorinsky(0.16)`, params f32 index 10 reads 0.0256.
 - **Command**: `npm test -- tunnel3d solver3d`.
