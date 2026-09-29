@@ -13,7 +13,7 @@ A lattice Boltzmann 2D/3D wind tunnel with TRT collision, running as WebGPU comp
 npm install
 npm run dev          # http://localhost:5173 — 2D tunnel, /3d.html, /validate.html, /bench.html
 npm test             # unit tests (vitest)
-npm run test:gpu     # headless Chrome (WebGPU): validation cases, 2D benchmark, 3D page smoke test
+npm run test:gpu     # headless Chrome (WebGPU): validation cases, 2D and 3D benchmark, page tests
 npm run bench        # MLUPS benchmark in headless Chrome
 tail -f test-results/progress.log   # follow a running GPU test or benchmark
 ```
@@ -34,7 +34,7 @@ Needs a browser with WebGPU: Chrome/Edge 113+, Safari 26, or Firefox on Windows 
 
 ## What it does: 3D
 
-- **Solver** (`src/shaders/step3d.ts`): a D3Q19 version of the same fused kernel, with TRT (Λ = 3/16), optional Smagorinsky, and τ clamped at 0.51.
+- **Solver** (`src/shaders/step3d.ts`): a D3Q19 version of the same fused kernel, with TRT, optional Smagorinsky, and τ clamped at 0.51. Λ is 3/16 down to τ ≈ 0.56 and shrinks toward BGK below that, as min(3/16, 50·(τ − ½)²): with Λ fixed, the inlet drove the flow unstable from τ ≈ 0.535 (Re ≈ 200 at the default sphere).
   - Distributions are stored as `f_i − w_i`. FP16 storage is scaled by 2^15 and roughly doubles throughput; FP32 is the reference.
   - Grids are 128×64×64, 192×96×96 (the default) and 256×128×128. A grid is offered only if its buffers fit the device's limits.
 - **Boundaries**:
@@ -46,9 +46,10 @@ Needs a browser with WebGPU: Chrome/Edge 113+, Safari 26, or Firefox on Windows 
 - **Visualization**:
   - an orbit camera;
   - the obstacle, sphere-traced through its SDF;
-  - one slice plane on any axis, showing speed or vorticity magnitude;
-  - 16,384 tracers released from a rake near the inlet.
-- **Throughput on an Apple M5**, medium grid: about 1,300 MLUPS with FP16 and 700 with FP32 (`npm run bench`). The page runs about 600 lattice steps per second at defaults.
+  - one slice plane on any axis;
+  - 16,384 tracers released from a rake near the inlet;
+  - a "Colour by" choice of speed or vorticity magnitude, which applies to both the slice and the tracers. The slice shows wake structure best.
+- **Throughput on an Apple M5**, medium grid: about 1,400 MLUPS with FP16 and 750 with FP32 (`npm run bench`). The page runs about 640 lattice steps per second at defaults.
 
 ## Accuracy and its limits
 
@@ -57,7 +58,7 @@ The tunnels are built for looking at flows, and the numbers they print are appro
 **Both tunnels**
 
 - **Compressibility.** Lattice Boltzmann is weakly compressible, with an error that grows as Mach². Both tunnels run the inflow at lattice speed 0.1, which is Mach 0.17, so the error is a few percent.
-- **Reynolds ceiling.** Stability needs τ ≥ 0.51, which caps Re at about 30 × the body size in cells at the default speed. Past that, τ is clamped and the page shows the Re it actually runs. The optional Smagorinsky model lets you go further, but only as a stabilizer: it keeps a coarse grid from blowing up, and it doesn't model real turbulence.
+- **Reynolds ceiling.** Stability needs τ ≥ 0.51, which caps Re at about 30 × the body size in cells at the default speed. Past that, τ is clamped and the page shows the Re it actually runs. If a flow blows up anyway, the page resets it, keeps the obstacle and settings, and says so; a second blow-up with nothing changed pauses it. The optional Smagorinsky model lets you go further, but only as a stabilizer: it keeps a coarse grid from blowing up, and it doesn't model real turbulence.
 - **Open boundaries and confinement.** The inlet fixes the inflow speed, and the side walls are slip. A body close to either feels them. In the 2D validation, a cylinder 8 diameters from the inlet read the Strouhal number 3% high and C_D 5% high, and matched the references only at 16 diameters from the inlet in a domain 48 diameters wide. The absorbing layers at the outlet reduce reflected pressure waves but don't remove them.
 - **Resolution.** Bodies are typically 15 to 50 cells across. Bouzidi walls are second-order accurate on curved surfaces, but thin features such as a wing's trailing edge span only a cell or two.
 
@@ -67,11 +68,12 @@ The tunnels are built for looking at flows, and the numbers they print are appro
 
 **3D only**
 
-- **Coarse grids and a short tunnel.** At the default grid (192×96×96), the sphere is about 19 cells across, sits only about 2.5 diameters behind the inlet, and has about 5 diameters of width around it. That is far smaller than a reference domain. In the validation case at Re 100, FP32 C_D read 1.152 against the published ≈ 1.09, about 6% high. That fits the confinement expected from a tunnel this short, though nothing in the suite separates confinement from other errors.
+- **Coarse grids and a short tunnel.** At the default grid (192×96×96), the sphere is about 19 cells across, sits only about 2.5 diameters behind the inlet, and has about 5 diameters of width around it. That is far smaller than a reference domain. In the validation case at Re 100, FP32 C_D read 1.156 against the published ≈ 1.09, about 6% high. That fits the confinement expected from a tunnel this short, though nothing in the suite separates confinement from other errors.
 - **D3Q19 artifacts.** D3Q19 has fewer velocity directions than D3Q27 and isn't fully rotationally invariant. Around round bodies above Re ≈ 250, results can depend on how the flow lines up with the lattice ([3D research doc](docs/research/3d-lattice-boltzmann-webgpu.md)). This is exactly where a sphere's wake becomes interesting: it stays steady and axisymmetric below Re ≈ 210, and sheds hairpin vortices from roughly 270–300 (Johnson & Patel 1999). D3Q27 would remove the artifact, at 1.42 times the memory traffic.
-- **FP16 storage.** Storing populations in 16 bits roughly doubles speed. On the validation sphere it read C_D 0.61% below FP32, and the gate allows 1%. FP16 also adds faint noise in quiet, low-vorticity regions. WGSL doesn't specify how f32 rounds to f16, so the error can differ between GPUs and browsers. Stored values are clamped to about ±2, which keeps a diverging run from producing NaNs but can hide the divergence. Switch the Tunnel group to FP32 when you need the reference numbers.
+- **Sphere wake regimes.** In FP32 at the default grid, the tunnel reproduces the transitions: at Re 250 the wake is steady but leans to one side (C_L 0.063; published ≈ 0.062), and at Re 300 it sheds with St 0.135 (published 0.137). C_D reads 12 to 13% high at both, which fits the confinement. Shedding takes about 30,000 steps to develop from rest, a minute or two on the page. In FP16 the sphere does not shed at Re 300 ([#8](https://github.com/slowernet/cells/issues/8)), so use FP32 to see it.
+- **FP16 storage.** Storing populations in 16 bits roughly doubles speed. On the validation sphere it read C_D 0.72% below FP32, and the gate allows 1%. FP16 also adds faint noise in quiet, low-vorticity regions. WGSL doesn't specify how f32 rounds to f16, so the error can differ between GPUs and browsers. Stored values are clamped to about ±2, which keeps a diverging run from producing NaNs but hides the divergence: the blow-up check never fires, and the page shows noise ([#9](https://github.com/slowernet/cells/issues/9)). Switch the Tunnel group to FP32 when you need the reference numbers.
 - **Simple open boundaries.** The inlet and outlet planes are set to equilibrium states. That's robust at edges and corners but only first-order accurate. Pinning the outlet density also reflects pressure waves, which the outlet sponge only partly absorbs.
-- **Averaging window.** The C_D and C_L readouts average the second half of the force history, which includes transients after the 3000-step ramp or after any change. Let the flow settle before reading them.
+- **Averaging window.** The C_D and C_L readouts average the second half of the force history, which includes transients after the 3000-step ramp or after any change. Let the flow settle before reading them. C_L is the y component of the side force only; a 3D wake can lean along z instead, so a steady or shedding wake may barely show in C_L. The Forces chart and a vorticity slice show it better.
 
 ## Validation
 
