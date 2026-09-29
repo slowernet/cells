@@ -106,7 +106,7 @@ function applyPhysics() {
   $('csOut').textContent = s.cs.toFixed(3);
   $('tauNote').textContent = `τ = ${tau.toFixed(4)}, ν = ${((tau - 0.5) / 3).toExponential(2)}, Mach ${mach.toFixed(2)}, L = ${state.lRef.toFixed(1)} cells`;
   const notes: string[] = [];
-  if (clamped && state.area > 0)
+  if (clamped)
     notes.push(`Re ${s.re} needs τ below 0.51, which is unstable. Running at Re ${effectiveRe.toFixed(0)}; enlarge the body or the grid for more (max ${maxReynolds(U_TARGET, state.lRef).toFixed(0)} at this size).`);
   if (s.smag) notes.push('Smagorinsky here stabilizes coarse grids; the grid is far too coarse to resolve turbulence.');
   note('reNote', notes.join(' '));

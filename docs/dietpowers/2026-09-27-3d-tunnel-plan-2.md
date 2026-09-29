@@ -18,7 +18,9 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
 
 - Lattice: D3Q19, with weights 1/3 (rest), 1/18 (6 axis directions) and 1/36 (12 edge diagonals), and c_s² = 1/3.
 - Collision:
-  - TRT with Λ = 3/16 (`MAGIC_LAMBDA`).
+  - TRT with Λ = min(3/16, 50·(τ − ½)²) (`trtLambda3`), set from the base τ on the host.
+
+    > **Changed 2026-09-28:** from a fixed Λ = 3/16; see the spec's Collision constraint.
   - Optional Smagorinsky, C_s from 0.10 to 0.17, default 0.16 when enabled.
   - τ is clamped at `TAU_MIN` = 0.51.
 - Storage: structure-of-arrays `f[i * N + cell]`, two buffers A and B that swap every step, pull streaming. Buffers hold f_i − w_i and density is `1 + Σ f`.

@@ -15,7 +15,9 @@ Plan 2 builds on the interfaces this spec fixes for plan 1 and doesn't change th
 
 - Lattice: D3Q19, with weights 1/3 (rest), 1/18 (6 axis directions) and 1/36 (12 edge diagonals), and c_s² = 1/3.
 - Collision:
-  - TRT with Λ = 3/16 (`MAGIC_LAMBDA`).
+  - TRT with Λ = min(3/16, 50·(τ − ½)²) (`trtLambda3`), set from the base τ on the host.
+
+  > **Changed 2026-09-28:** Λ follows τ below τ ≈ 0.561 (from a fixed Λ = 3/16 (`MAGIC_LAMBDA`)). Why: with Λ fixed, the odd-mode relaxation rate goes to zero as τ → ½, and the inlet plane excites those modes. The empty tunnel and the page's default sphere blew up at τ ≤ 0.535 with u = 0.1 (Re ≥ about 200), well inside the range the Re clamp allows. A periodic box is stable, BGK is stable, and changing the inlet formula or the outlet, sponge, absorbing layer or side faces did not help. With the rule, the sphere runs 30,000 steps at Re 250, 400 and 576 (τ 0.51). Λ = 3/16 is kept wherever it is stable, where it places bounce-back walls exactly. Approved by the partner on 2026-09-28.
   - Optional Smagorinsky, C_s from 0.10 to 0.17, default 0.16 when enabled.
   - τ is clamped at `TAU_MIN` = 0.51.
 - Storage: structure-of-arrays `f[i * N + cell]`, two buffers A and B that swap every step, pull streaming. Buffers hold f_i − w_i and density is `1 + Σ f`.
@@ -260,6 +262,8 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
   - Esoteric Pull saves memory rather than bandwidth, and it races with Bouzidi's neighbour read (Lehmann 2022, via the report).
 - This repo's D2Q9 kernel reaches about 1,700 MLUPS on grids larger than cache on the M5, about 84% of peak bandwidth (PR #1 description, "Performance (Apple M5)").
 - Ginzburg et al., Λ = 3/16, and Bouzidi et al. 2001 (via `docs/research/lattice-boltzmann-browser-wind-tunnel.md`).
+
+  > **Changed 2026-09-28:** Λ = 3/16 now applies only for τ ≥ about 0.561; see the Collision constraint.
 - Existing code this design copies or reuses:
   - `src/gpu.ts`: it already requests the adapter's max binding and buffer sizes;
   - `src/units.ts`: `deriveTau`, `maxReynolds`, `TAU_MIN`;
