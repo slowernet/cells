@@ -204,7 +204,7 @@ One render pass per frame draws the outline, obstacle, slice and tracers against
     3. If p leaves the domain box or the nearest node is solid, reset p to its seed.
     4. Store the position and u(p).
   - When `steps` is 0 (paused), nothing moves.
-  - **Draw**: a `line-list` with 2 vertices per particle, from p to p − (3/uRef)·u. Colour is `viridis(|u|/(1.6·uRef))` at alpha 0.8, blended over, depth-tested, and not writing depth.
+  - **Draw**: a `line-list` with 2 vertices per particle, from p to p − (3/uRef)·u. Colour follows `mode` with the slice's scales, `viridis(|u|/(1.6·uRef))` for speed or `viridis(|curl u|/(0.3·uRef))` for vorticity, sampled at p from `macro` in the vertex stage (**Changed 2026-09-29:** from speed only; see the spec's Tracers), at alpha 0.8, blended over, depth-tested, and not writing depth.
 - **Tests**:
   - `src/view3d.test.ts`:
     - `rakeSeeds`: 16384 × 4 floats; every x is 0.1·W; y spans (H/4, 3H/4) and z spans (D/4, 3D/4); the first and last seeds sit half a spacing inside those bounds.

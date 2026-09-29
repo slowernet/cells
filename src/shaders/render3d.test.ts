@@ -46,11 +46,15 @@ test('struct matches packing', () => {
   expect(size).toBe(VIEW3_BYTES);
 });
 
-test('line module binds particles read-only', () => {
+test('line module binds particles and the macro field read-only', () => {
   const code = tracerLineShader();
   expect(code).toMatch(/@binding\(4\) var<storage, read> particles/);
+  expect(code).toMatch(/@binding\(2\) var<storage, read> mac/);
   expect(code).toContain('@binding(1)');
-  expect(code).not.toContain('@binding(0)');
+});
+
+test('tracers and slice share the field colouring', () => {
+  for (const code of [sliceShader(), tracerLineShader()]) expect(code).toContain('fieldValue(p, ');
 });
 
 test('advect sub-steps use the shared threshold', () => {

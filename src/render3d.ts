@@ -101,7 +101,12 @@ export class Renderer3D {
     // layout: 'auto' keeps only the bindings the line module uses, so number them explicitly.
     this.lineBG = d.createBindGroup({
       layout: this.linePipe.getBindGroupLayout(0),
-      entries: [{ binding: 1, resource: { buffer: this.view } }, { binding: 4, resource: { buffer: this.particles } }],
+      entries: [
+        { binding: 0, resource: { buffer: solver.params } },
+        { binding: 1, resource: { buffer: this.view } },
+        { binding: 2, resource: { buffer: solver.macro } },
+        { binding: 4, resource: { buffer: this.particles } },
+      ],
     });
   }
 

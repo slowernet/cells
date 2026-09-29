@@ -64,6 +64,29 @@ test('sphere stays stable at Re 400', async ({ page }) => {
   expect(Number.isFinite(await page.evaluate(() => (window as unknown as { tunnel3d: { cd(): number } }).tunnel3d.cd()))).toBe(true);
 });
 
+test('tracers follow the colour-by field, even while paused', async ({ page }) => {
+  streamProgress(page, 'tunnel3d tracer colour');
+  await page.goto('/3d.html');
+  await page.waitForFunction(() => (window as unknown as { tunnel3d?: { ready: boolean } }).tunnel3d?.ready === true, null, { timeout: 60_000 });
+  await page.waitForFunction(() => (window as unknown as { tunnel3d: { step(): number } }).tunnel3d.step() > 4000, null, { timeout: 60_000 });
+  const set = (id: string, value: string) =>
+    page.evaluate(([id, value]) => {
+      const e = document.getElementById(id) as HTMLSelectElement;
+      e.value = value;
+      e.dispatchEvent(new Event('change', { bubbles: true }));
+    }, [id, value]);
+  await set('sliceAxis', 'off');
+  await page.click('.menu-button');
+  await page.click('#pause');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(500);
+  const speed = await page.locator('#view').screenshot();
+  await set('viewMode', '1');
+  await page.waitForTimeout(500);
+  const vorticity = await page.locator('#view').screenshot();
+  expect(vorticity.equals(speed)).toBe(false);
+});
+
 test('slice axis off hides the slice', async ({ page }) => {
   await page.goto('/3d.html');
   await page.waitForFunction(() => (window as unknown as { tunnel3d?: { ready: boolean } }).tunnel3d?.ready === true, null, { timeout: 60_000 });
