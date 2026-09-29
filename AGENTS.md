@@ -18,7 +18,7 @@ npm run bench      # MLUPS benchmark sweep
 tail -f test-results/progress.log   # live progress of a running GPU test or benchmark
 ```
 
-`npm run test:gpu` runs every spec in `tests/`: the validation cases (which `CASES` filters), the 2D benchmark and the 3D page smoke test. The 3D page's throughput check (≥ 480 steps/s at defaults) runs only with `THROUGHPUT=1` and needs the GPU to itself.
+`npm run test:gpu` runs every spec in `tests/`: the validation cases (which `CASES` filters), the benchmark (2D and D3Q19 rows; `CASES` doesn't filter it, #12) and the page tests. D3Q19 benchmark rows time about 2 s each and report the median of 3; shorter windows swung about 15% with GPU clock ramping. The 3D page's throughput check (≥ 480 steps/s at defaults) runs only with `THROUGHPUT=1` and needs the GPU to itself.
 
 GPU tests build to `dist-test/` and serve it on port 5179 with `vite preview`. They use a static build because the dev server's hot reload restarts the page when a source file changes, which aborts long runs. Don't point Playwright at the dev server.
 
@@ -34,7 +34,7 @@ Long cases log a timestamped line after each convergence check (`check k/max`, a
 - `src/render.ts`: field views and GPU tracers; its WGSL lives in `src/shaders/render.ts`.
 - `src/chart.ts`: the C_D/C_L chart.
 - `src/app.css`: the layout both pages share. The canvas fills the viewport. The only thing over it is the menu button at the top right, which opens a slide-in panel headed by the 2D | 3D switch, the play/pause and tool controls, and the stats. Overlays never use `backdrop-filter`, the panel animates only `transform`, and a closed panel is `content-visibility: hidden`.
-- `src/menu.ts`: the menu toggle, Escape and focus handling, and `isShown`, which tells whether the chart is visible. `src/icons.ts`: inline Lucide icons, with their licence notices.
+- `src/menu.ts`: the menu toggle, Escape and focus handling, `isShown`, which tells whether the chart is visible, and `showToast`. `src/icons.ts`: inline Lucide icons, with their licence notices.
 - `src/app.ts`: the UI.
 - `src/cases.ts`: validation cases.
 - `src/bench.ts`: the benchmark.
@@ -44,7 +44,7 @@ Long cases log a timestamped line after each convergence check (`check k/max`, a
 - `src/gpu.ts`: `initGpu` (requests the adapter's buffer limits, plus `shader-f16` with `{ f16: true }`) and `readBuffer`.
 - `src/validate.ts`: the validation page, the `runCase` hook and the PASS/FAIL/SKIP output.
 - 3D (D3Q19, `3d.html`):
-  - `src/lattice3d.ts`: D3Q19 constants and flag bits.
+  - `src/lattice3d.ts`: D3Q19 constants, flag bits and `trtLambda3`.
   - `src/shaders/common3d.ts`: the `Params3` struct, the FP16/FP32 storage codec, shared WGSL and `fitsLimits`.
   - `src/shaders/step3d.ts`: the step kernel generator.
   - `src/shaders/aux3d.ts`: the flag/refill, init, macro and force-reduction kernels.
@@ -55,8 +55,8 @@ Long cases log a timestamped line after each convergence check (`check k/max`, a
   - `src/render3d.ts` + `src/shaders/render3d.ts`: the outline, sphere-traced obstacle, slice and tracers.
   - `src/camera3d.ts`: the orbit camera.
   - `src/view3d.ts`: the View3 uniform and tracer helpers.
-  - `src/tunnel3d.ts`: page logic, including presets, obstacle bodies and the step tuner.
-- `tests/`: the Playwright specs `validate.spec.ts`, `bench.spec.ts`, `tunnel3d.spec.ts` and `menu.spec.ts` (both pages, desktop and phone viewports), and `progress.ts` for the progress log.
+  - `src/tunnel3d.ts`: page logic, including presets, obstacle bodies, the step tuner, and the blow-up checks `hasDiverged` and `fieldDiverged` that both pages use.
+- `tests/`: the Playwright specs `validate.spec.ts`, `bench.spec.ts`, `tunnel3d.spec.ts`, `blowup.spec.ts` (recovery on both pages), `tuner.spec.ts` and `menu.spec.ts` (both pages, desktop and phone viewports), and `progress.ts` for the progress log.
 - Unit tests sit next to their modules as `src/**/*.test.ts`. Tests of modules that import a solver stub `GPUBufferUsage` first and import dynamically, as `src/solver.test.ts` does.
 
 ## Solver conventions
@@ -72,7 +72,8 @@ These apply to both solvers unless a line says otherwise.
 - Obstacles are a signed distance field in cells (negative inside) with nodes at integer coordinates. Bouzidi link fractions come from the SDF, and halfway walls sit at −0.5 and H − 0.5.
 - 2D open boundaries: a Zou-He velocity inlet and a Zou-He pressure outlet at ρ = 1. The absorbing layers (`absorb`, `inletLayerFraction`) stop acoustic resonance. Without them, the lift on a cylinder grows without bound.
 - 3D open boundaries: the inlet plane is written as the equilibrium at the ramped inflow speed. The outlet plane copies unknown populations from the plane behind it, then writes the equilibrium at ρ = 1 with its own velocity. The side faces are slip, with bounce-back where the reflected source node is solid. There is an outlet sponge and absorbing layer, but no inlet layer.
-- 3D storage precision is `'fp16' | 'fp32'`, baked into the generated WGSL. FP16 is scaled by 2^15 and clamped before every store. `sphereFp16` gates FP16 against FP32 at 1%.
+- TRT Λ: 2D uses `MAGIC_LAMBDA` = 3/16. 3D uses `trtLambda3(τ)` = min(3/16, 50·(τ − ½)²), set on the host from the base τ. With Λ fixed at 3/16, the odd modes relax ever more slowly as τ → ½, the inlet excites them, and the 3D flow blew up from τ ≈ 0.535 at u = 0.1 (#7). Don't restore a fixed Λ in 3D. Whether 2D has the same problem is open (#11).
+- 3D storage precision is `'fp16' | 'fp32'`, baked into the generated WGSL. FP16 is scaled by 2^15 and clamped before every store. `sphereFp16` gates FP16 against FP32 at 1%. Because of the clamp, an FP16 blow-up turns into finite noise, not NaN, and the blow-up checks never fire (#9). Stability tests must run in FP32.
 - Keep the absorbing layers weak (`absorb` ≈ 0.02) and bodies well downstream. The inlet fixes the inflow speed, so it confines a nearby body: a cylinder 8D from the inlet read St 3% high and C_D 5% high. At 16D from the inlet in a 48D-wide domain it matched the references. A strong layer (0.1) or an inlet layer adds a few percent more.
 
 ## WGSL gotchas
@@ -88,6 +89,7 @@ These apply to both solvers unless a line says otherwise.
 
 - Validation acceptance ranges are fixed before a case runs. If a result misses, find the cause. Don't widen the range to pass. Any change to a range has to be stated and justified in the commit message.
 - Performance numbers need the GPU to itself. Don't run the benchmark alongside validation or an open tunnel tab. Background GPU users count too: a video call or a mirrored display pulled D3Q19 FP16 from about 1,300 to 1,124 MLUPS. To check the load first, run `ioreg -r -d 1 -c IOAccelerator | rg 'Device Utilization'`.
+- To stop a process by name, don't use `pkill -f` or `pgrep -f` with a pattern that appears in your own command: they match the calling shell's command line too and kill it. Find the PID with `ps -Ao pid,command | rg '[p]attern'` instead.
 - Performance-sensitive paths:
   - Use one dispatch per step, with every step for a frame in a single compute pass.
   - Keep the hot kernel free of per-step readbacks.

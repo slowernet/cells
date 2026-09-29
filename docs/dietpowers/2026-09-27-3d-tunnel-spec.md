@@ -142,6 +142,9 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
     - Seeds sit on a regular rake grid at x = 0.1·W, covering the middle half of y and z.
     - A particle respawns at its seed when it leaves the domain or enters a solid cell. There is no age limit, as in the 2D streakline mode.
     - Each is drawn as a depth-tested segment from p to p − k·u, with k = 3 / u_target, so that the target speed maps to 3 cells.
+    - Each is coloured by the View field at p, with the slice's scales: speed or vorticity magnitude. The line shader samples `macro` itself, so switching the field while paused recolours the tracers.
+
+    > **Changed 2026-09-29:** tracers follow the View field (from always speed). Why: with the slice off, choosing vorticity changed nothing on screen, and speed hardly varies in the wake, so shedding at Re 400 looked like no vorticity at all. Approved by the partner on 2026-09-29.
   - Vertex stages bind storage read-only.
 - `3d.html` + `src/app3d.ts`: the controls in the table below, the C_D/C_L chart through `ForceChart`, MLUPS and steps-per-second readouts, and adaptive steps per frame as in `app.ts`. The coefficients are C_D = 2F_x/(u_target² · A) and C_L = 2F_y/(u_target² · A), with A = `referenceArea(...)`. `index.html` links to `3d.html` and back, and `vite.config.ts` adds `3d.html` as a build input.
 - Page layout, on both `index.html` and `3d.html`:
@@ -192,7 +195,7 @@ A separate 3D stack sits beside the 2D one and copies its patterns. The 2D solve
 | Grid | presets that pass `fitsLimits` | medium, or the largest that fits |
 | Precision | FP16 (if `shader-f16`), FP32 | FP16 if available |
 | Smagorinsky | off, or on with C_s 0.10 to 0.17 | off |
-| View | speed, vorticity | speed |
+| View | speed, vorticity (slice and tracers; see Plan 2, Tracers) | speed |
 | Slice axis / position | x, y, z, off / 0 to 1 | z / 0.5 |
 | Tracers | on, off | on |
 

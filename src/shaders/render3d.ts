@@ -47,6 +47,20 @@ fn velocity(p: vec3f) -> vec3f {
 }
 
 fn solidAt(p: vec3f) -> bool { return macAt(vec3i(round(p))).w == 0.0; }
+
+// |curl u| from central differences of trilinear velocity at ±1 cell.
+fn vorticity(p: vec3f) -> f32 {
+  let dx = velocity(p + vec3f(1.0, 0.0, 0.0)) - velocity(p - vec3f(1.0, 0.0, 0.0));
+  let dy = velocity(p + vec3f(0.0, 1.0, 0.0)) - velocity(p - vec3f(0.0, 1.0, 0.0));
+  let dz = velocity(p + vec3f(0.0, 0.0, 1.0)) - velocity(p - vec3f(0.0, 0.0, 1.0));
+  return length(0.5 * vec3f(dy.z - dz.y, dz.x - dx.z, dx.y - dy.x));
+}
+
+// The View field as a 0..1 colour-map input, shared by the slice and the tracers.
+fn fieldValue(p: vec3f, u: vec3f) -> f32 {
+  if (V.mode == 0u) { return length(u) / (1.6 * V.uRef); }
+  return vorticity(p) / (0.3 * V.uRef);
+}
 `;
 
 /** The 12 edges of the domain box as a line list (24 vertices). */
@@ -171,12 +185,7 @@ struct VsOut { @builtin(position) pos: vec4f, @location(0) world: vec3f };
 @fragment fn fs(in: VsOut) -> @location(0) vec4f {
   let p = in.world;
   if (solidAt(p)) { return vec4f(vec3f(0.35), 1.0); }
-  if (V.mode == 0u) { return vec4f(viridis(length(velocity(p)) / (1.6 * V.uRef)), 1.0); }
-  let dx = velocity(p + vec3f(1.0, 0.0, 0.0)) - velocity(p - vec3f(1.0, 0.0, 0.0));
-  let dy = velocity(p + vec3f(0.0, 1.0, 0.0)) - velocity(p - vec3f(0.0, 1.0, 0.0));
-  let dz = velocity(p + vec3f(0.0, 0.0, 1.0)) - velocity(p - vec3f(0.0, 0.0, 1.0));
-  let curl = 0.5 * vec3f(dy.z - dz.y, dz.x - dx.z, dx.y - dy.x);
-  return vec4f(viridis(length(curl) / (0.3 * V.uRef)), 1.0);
+  return vec4f(viridis(fieldValue(p, velocity(p))), 1.0);
 }
 `;
 }
@@ -219,15 +228,15 @@ fn advect(@builtin(global_invocation_id) g: vec3u) {
 `;
 }
 
-/** Draws each tracer as a segment from p back along its velocity; vertex stages may only read storage. */
+/** Draws each tracer as a segment from p back along its velocity, coloured by the View field; vertex stages may only read storage. */
 export function tracerLineShader(): string {
-  return /* wgsl */ `
-${VIEW3_WGSL}
-@group(0) @binding(1) var<uniform> V: View3;
+  return /* wgsl */ `${header}
+@group(0) @binding(2) var<storage, read> mac: array<vec4f>;
 @group(0) @binding(4) var<storage, read> particles: array<vec4f>;
 ${COLOR_WGSL}
+${MACRO_SAMPLE_WGSL}
 
-struct VsOut { @builtin(position) pos: vec4f, @location(0) speed: f32 };
+struct VsOut { @builtin(position) pos: vec4f, @location(0) value: f32 };
 
 @vertex fn vs(@builtin(vertex_index) vi: u32) -> VsOut {
   let k = vi / 2u;
@@ -236,12 +245,12 @@ struct VsOut { @builtin(position) pos: vec4f, @location(0) speed: f32 };
   let end = select(p, p - (3.0 / V.uRef) * u, (vi & 1u) == 1u);
   var o: VsOut;
   o.pos = V.viewProj * vec4f(end, 1.0);
-  o.speed = length(u);
+  o.value = fieldValue(p, u);
   return o;
 }
 
 @fragment fn fs(in: VsOut) -> @location(0) vec4f {
-  return vec4f(viridis(in.speed / (1.6 * V.uRef)), 0.8);
+  return vec4f(viridis(in.value), 0.8);
 }
 `;
 }
